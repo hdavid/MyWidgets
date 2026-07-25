@@ -29,19 +29,14 @@ struct CamSpec: Codable, Identifiable, Equatable {
 enum CamsConfig {
     static let fileName = "webcams.json"
 
-    static var fileURL: URL? {
-        FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: AppConstants.appGroup)?
-            .appendingPathComponent(fileName)
-    }
+    static var fileURL: URL? { ConfigStore.url(fileName) }
 
     /// Deliberately empty of real endpoints: those belong in the App Group
     /// config (see scripts/local-config.sh), not committed to the repo.
     static let defaultSpecs = [CamSpec(id: "default", name: "Webcam")]
 
     static func load() -> [CamSpec] {
-        guard let url = fileURL,
-              let data = try? Data(contentsOf: url),
+        guard let data = ConfigStore.read(fileName),
               let specs = try? JSONDecoder().decode([CamSpec].self, from: data),
               !specs.isEmpty
         else { return defaultSpecs }
@@ -58,9 +53,7 @@ enum CamsConfig {
 
     @discardableResult
     static func save(_ specs: [CamSpec]) -> Bool {
-        guard let url = fileURL else { return false }
-        try? FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard let url = ConfigStore.writeURL(fileName) else { return false }
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? enc.encode(specs) else { return false }

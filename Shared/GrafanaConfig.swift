@@ -150,11 +150,7 @@ struct GrafanaSource: Codable, Identifiable, Equatable {
 enum GrafanaConfig {
     static let fileName = "grafana.json"
 
-    static var fileURL: URL? {
-        FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: AppConstants.appGroup)?
-            .appendingPathComponent(fileName)
-    }
+    static var fileURL: URL? { ConfigStore.url(fileName) }
 
     /// Deliberately generic: real endpoints belong in the App Group config (see
     /// scripts/local-config.sh), not committed to the repo.
@@ -163,8 +159,7 @@ enum GrafanaConfig {
     ]
 
     static func load() -> [GrafanaSource] {
-        guard let url = fileURL,
-              let data = try? Data(contentsOf: url),
+        guard let data = ConfigStore.read(fileName),
               let sources = try? JSONDecoder().decode([GrafanaSource].self, from: data),
               !sources.isEmpty
         else { return defaultSources }
@@ -181,9 +176,7 @@ enum GrafanaConfig {
 
     @discardableResult
     static func save(_ sources: [GrafanaSource]) -> Bool {
-        guard let url = fileURL else { return false }
-        try? FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard let url = ConfigStore.writeURL(fileName) else { return false }
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? enc.encode(sources) else { return false }

@@ -225,6 +225,9 @@ struct SecondaryLine: View {
     var r: WindReading
     var size: CGFloat
     var weight: Font.Weight = .semibold
+    /// One item per line. Only where the family has the height for it — small
+    /// stays on a single joined line.
+    var stacked = false
 
     /// One concatenated Text rather than an HStack of Texts.
     ///
@@ -243,7 +246,17 @@ struct SecondaryLine: View {
     }
 
     var body: some View {
-        if let line {
+        if stacked {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(r.secondaryLine, id: \.role) { item in
+                    Text(item.text)
+                        .foregroundStyle(r.color(item.role))
+                        .font(.system(size: size, weight: weight))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                }
+            }
+        } else if let line {
             line
                 .font(.system(size: size, weight: weight))
                 .lineLimit(1)
@@ -328,7 +341,7 @@ struct MediumWindView: View {
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     PrimaryValue(r: r, size: 32)
-                    SecondaryLine(r: r, size: 13)
+                    SecondaryLine(r: r, size: 13, stacked: true)
                 }
                 .layoutPriority(1)
                 Spacer(minLength: 4)
@@ -336,10 +349,11 @@ struct MediumWindView: View {
                     ForEach(Array(r.chipRows(max: 2).enumerated()), id: \.offset) { _, slots in
                         ChipRow(r: r, slots: slots, size: 15)
                     }
-                    TimestampLine(snap: r.snap, stale: stale, size: 9)
-                        .padding(.top, 2)
                 }
             }
+            Spacer(minLength: 0)
+            TimestampLine(snap: r.snap, stale: stale, size: 9)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 }
@@ -359,7 +373,7 @@ struct LargeWindView: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     PrimaryValue(r: r, size: 48)
-                    SecondaryLine(r: r, size: 20, weight: .regular)
+                    SecondaryLine(r: r, size: 20, weight: .regular, stacked: true)
                 }
                 Spacer(minLength: 0)
             }
@@ -373,6 +387,7 @@ struct LargeWindView: View {
             }
             Spacer()
             TimestampLine(snap: r.snap, stale: stale, size: 12)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 }

@@ -32,7 +32,23 @@ enum SelfFetch {
 
     // MARK: - Keychain via /usr/bin/security
 
-    static func token(for service: String) -> String? {
+    /// What Claude Code stores: a short-lived access token plus its expiry.
+    /// The access token is good for about 8 hours; Claude Code renews it from its
+    /// refresh token whenever it next talks to the API. Nothing else renews it,
+    /// so between Claude Code sessions it simply lapses.
+    struct Credential {
+        let token: String
+        let expiresAt: Date?
+
+        /// Treated as expired a minute early, so a token that dies mid-request
+        /// doesn't produce a confusing 401.
+        var isExpired: Bool {
+            guard let expiresAt else { return false }
+            return expiresAt.timeIntervalSinceNow < 60
+        }
+    }
+
+    static func credential(for service: String) -> Credential? {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/security")
         p.arguments = ["find-generic-password", "-s", service, "-w"]
@@ -48,7 +64,10 @@ enum SelfFetch {
             let oauth = obj["claudeAiOauth"] as? [String: Any],
             let tok = oauth["accessToken"] as? String, !tok.isEmpty
         else { return nil }
-        return tok
+        // expiresAt is epoch milliseconds.
+        let expiry = (oauth["expiresAt"] as? NSNumber)
+            .map { Date(timeIntervalSince1970: $0.doubleValue / 1000) }
+        return Credential(token: tok, expiresAt: expiry)
     }
 
     // MARK: - Usage endpoint
@@ -112,12 +131,20 @@ enum SelfFetch {
                 fable: QuotaGauge(percent: nil, severity: "normal", resetsAt: nil),
                 activeKind: nil)
 
-            guard let tok = token(for: spec.keychainService) else {
+            guard let cred = credential(for: spec.keychainService) else {
                 acc.error = old?.error == nil && old != nil ? "session_expired" : "logged_out"
                 accounts.append(acc)
                 continue
             }
-            let (status, raw) = usage(token: tok)
+            // Don't spend a request on a token we can already see has lapsed —
+            // it would come back 401 and read as "log in again", when in fact
+            // any Claude Code command will renew it.
+            if cred.isExpired {
+                acc.error = "token_stale"
+                accounts.append(acc)
+                continue
+            }
+            let (status, raw) = usage(token: cred.token)
             switch (status, raw) {
             case (200, .some(let u)):
                 let (five, week, fable, active) = distill(u)

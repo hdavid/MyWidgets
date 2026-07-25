@@ -92,18 +92,12 @@ struct WindguruSpot: Codable, Identifiable, Equatable {
 enum WindguruConfig {
     static let fileName = "windguru.json"
 
-    static var fileURL: URL? {
-        FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: AppConstants.appGroup)?
-            .appendingPathComponent(fileName)
-    }
+    static var fileURL: URL? { ConfigStore.url(fileName) }
 
     static let defaultSpots = [WindguruSpot(id: "default", title: "Forecast")]
 
     static func load() -> [WindguruSpot] {
-        guard let url = fileURL, let data = try? Data(contentsOf: url) else {
-            return defaultSpots
-        }
+        guard let data = ConfigStore.read(fileName) else { return defaultSpots }
         guard var spots = try? JSONDecoder().decode([WindguruSpot].self, from: data),
               !spots.isEmpty
         else { return defaultSpots }
@@ -125,9 +119,7 @@ enum WindguruConfig {
 
     @discardableResult
     static func save(_ spots: [WindguruSpot]) -> Bool {
-        guard let url = fileURL else { return false }
-        try? FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard let url = ConfigStore.writeURL(fileName) else { return false }
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? enc.encode(spots) else { return false }

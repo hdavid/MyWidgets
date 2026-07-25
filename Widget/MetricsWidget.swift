@@ -60,10 +60,13 @@ struct WindWidgetView: View {
                 switch family {
                 case .systemMedium:
                     MediumWindView(r: r, stale: entry.stale)
+                        .padding(.horizontal, 12).padding(.vertical, 9)
                 case .systemLarge, .systemExtraLarge:
                     LargeWindView(r: r, stale: entry.stale)
+                        .padding(.horizontal, 14).padding(.vertical, 11)
                 default:
                     SmallWindView(r: r, stale: entry.stale)
+                        .padding(.horizontal, 11).padding(.vertical, 9)
                 }
             } else {
                 NoDataView(message: entry.source?.isConfigured == true
@@ -98,5 +101,9 @@ struct MetricsWidget: Widget {
         .configurationDisplayName("Live Metrics")
         .description("Live values from your Grafana. Right-click → Edit Widget to pick the source.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        // WidgetKit insets widget content by a generous default margin, which is
+        // what pushed the title away from the top edge. Opt out and set our own
+        // below, so the layout gets the full height.
+        .contentMarginsDisabled()
     }
 }

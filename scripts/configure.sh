@@ -18,7 +18,8 @@ cd "$ROOT"
 
 envval() { grep "^$1=" "$2" 2>/dev/null | head -1 | cut -d= -f2-; }
 
-for key in BUNDLE_PREFIX APP_NAME DEVELOPMENT_TEAM; do
+for key in BUNDLE_PREFIX APP_NAME DEVELOPMENT_TEAM \
+           IOS_BUNDLE_PREFIX IOS_DEVELOPMENT_TEAM IOS_APP_GROUPS; do
     if [ -z "${!key:-}" ]; then
         v="$(envval "$key" local-config/build.env)"
         [ -z "$v" ] && v="$(envval "$key" build.env.example)"
@@ -34,12 +35,24 @@ done
 #           container it shares with its widget.
 #   iOS   — must begin with "group.", and must NOT carry the team prefix.
 # Getting this wrong fails at runtime (nil container URL), not at build time.
-export APP_GROUP="${APP_GROUP:-$DEVELOPMENT_TEAM.group.$BUNDLE_PREFIX.$APP_NAME}"
-export APP_GROUP_IOS="${APP_GROUP_IOS:-group.$BUNDLE_PREFIX.$APP_NAME}"
-export BUNDLE_ID="${BUNDLE_ID:-$BUNDLE_PREFIX.$APP_NAME}"
+# iOS may be signed by a different team than macOS (see local-config/build.env).
+export IOS_BUNDLE_PREFIX="${IOS_BUNDLE_PREFIX:-$BUNDLE_PREFIX}"
+export IOS_DEVELOPMENT_TEAM="${IOS_DEVELOPMENT_TEAM:-$DEVELOPMENT_TEAM}"
+export IOS_APP_GROUPS="${IOS_APP_GROUPS:-yes}"
 
-echo "==> team $DEVELOPMENT_TEAM · bundle $BUNDLE_ID"
-echo "    groups: macOS $APP_GROUP · iOS $APP_GROUP_IOS"
+export APP_GROUP="${APP_GROUP:-$DEVELOPMENT_TEAM.group.$BUNDLE_PREFIX.$APP_NAME}"
+export BUNDLE_ID="${BUNDLE_ID:-$BUNDLE_PREFIX.$APP_NAME}"
+export IOS_BUNDLE_ID="$IOS_BUNDLE_PREFIX.$APP_NAME"
+if [ "$IOS_APP_GROUPS" = yes ]; then
+    export APP_GROUP_IOS="${APP_GROUP_IOS:-group.$IOS_BUNDLE_PREFIX.$APP_NAME}"
+else
+    # A free personal team has no App Groups capability; an empty value makes
+    # ConfigStore fall back to the app's own container.
+    export APP_GROUP_IOS=""
+fi
+
+echo "==> macOS: team $DEVELOPMENT_TEAM · bundle $BUNDLE_ID · group $APP_GROUP"
+echo "    iOS:   team $IOS_DEVELOPMENT_TEAM · bundle $IOS_BUNDLE_ID · group ${APP_GROUP_IOS:-(none — app-private config)}"
 
 # ── Swift: one constant every target reads ───────────────────────────────────
 cat > Shared/BuildConfig.generated.swift <<SWIFT
@@ -94,8 +107,36 @@ write_entitlements() {
 # the widget extension is.
 write_entitlements entitlements/macOS.entitlements       macOS "$APP_GROUP"     no
 write_entitlements entitlements/macOSWidget.entitlements macOS "$APP_GROUP"     yes
-write_entitlements entitlements/iOS.entitlements         iOS   "$APP_GROUP_IOS" no
-write_entitlements entitlements/iOSWidget.entitlements   iOS   "$APP_GROUP_IOS" no
+if [ -n "$APP_GROUP_IOS" ]; then
+    write_entitlements entitlements/iOS.entitlements       iOS "$APP_GROUP_IOS" no
+    write_entitlements entitlements/iOSWidget.entitlements iOS "$APP_GROUP_IOS" no
+else
+    # Declaring an empty or unavailable group makes signing fail outright, so
+    # ship a plist with no capabilities at all.
+    for f in entitlements/iOS.entitlements entitlements/iOSWidget.entitlements; do
+        printf '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict/>\n</plist>\n' > "$f"
+    done
+fi
+
+# ── Config baked into the bundle ─────────────────────────────────────────────
+# Only needed when there is no App Group: then the widget extension has its own
+# sandbox and cannot see anything the app saves, so the one channel left is the
+# app bundle, which an embedded extension may read from.
+#
+# NOTE this puts local-config/ — including any Grafana token — inside the built
+# app. Fine for a local debug build on your own device; it is why BundledConfig/
+# is gitignored and why this only happens with *_APP_GROUPS=no.
+rm -rf BundledConfig
+if [ "$IOS_APP_GROUPS" != yes ] && [ -d local-config ]; then
+    mkdir -p BundledConfig
+    for f in grafana.json webcams.json windguru.json accounts.json; do
+        [ -f "local-config/$f" ] && cp "local-config/$f" "BundledConfig/$f"
+    done
+    echo "    bundling config for the widget: $(ls BundledConfig 2>/dev/null | tr '\n' ' ')"
+else
+    # xcodegen needs the folder to exist even when empty.
+    mkdir -p BundledConfig
+fi
 
 # xcodegen expands ${VAR} in project.yml from the environment.
 xcodegen generate >/dev/null

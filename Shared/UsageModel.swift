@@ -39,6 +39,9 @@ struct Account: Codable, Identifiable {
         case "no_token": return "no token"
         case "session_expired": return "expired · log in"
         case "token_expired": return "expired · log in"
+        // Distinct from a real logout: the refresh token is still good, so
+        // running any claude command renews the access token.
+        case "token_stale": return "stale · run claude"
         default: return error
         }
     }
@@ -101,11 +104,7 @@ enum ISO8601 {
 // MARK: - Loading
 
 enum UsageStore {
-    static var fileURL: URL? {
-        FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: AppConstants.appGroup)?
-            .appendingPathComponent(AppConstants.fileName)
-    }
+    static var fileURL: URL? { ConfigStore.url(AppConstants.fileName) }
 
     static func load() -> Snapshot? {
         guard let url = fileURL, let data = try? Data(contentsOf: url) else { return nil }

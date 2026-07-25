@@ -20,11 +20,7 @@ struct AccountSpec: Codable, Identifiable, Equatable {
 enum AccountsConfig {
     static let fileName = "accounts.json"
 
-    static var fileURL: URL? {
-        FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: AppConstants.appGroup)?
-            .appendingPathComponent(fileName)
-    }
+    static var fileURL: URL? { ConfigStore.url(fileName) }
 
     /// Out of the box: the single default Claude Code login.
     static let defaultSpecs = [
@@ -33,8 +29,7 @@ enum AccountsConfig {
     ]
 
     static func load() -> [AccountSpec] {
-        guard let url = fileURL,
-              let data = try? Data(contentsOf: url),
+        guard let data = ConfigStore.read(fileName),
               let specs = try? JSONDecoder().decode([AccountSpec].self, from: data),
               !specs.isEmpty else { return defaultSpecs }
         return specs
@@ -42,9 +37,7 @@ enum AccountsConfig {
 
     @discardableResult
     static func save(_ specs: [AccountSpec]) -> Bool {
-        guard let url = fileURL else { return false }
-        try? FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard let url = ConfigStore.writeURL(fileName) else { return false }
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? enc.encode(specs) else { return false }
