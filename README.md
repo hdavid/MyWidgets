@@ -104,13 +104,15 @@ is not committed.
 ./scripts/build-release.sh    # macOS: build + package dist/MyWidgets-<version>.dmg
 ```
 
-For iOS, open the generated project and run the **MyWidgetsPhone** scheme:
+It's one app, not two: a single multiplatform target builds for macOS, iOS and
+iPadOS, so there is one scheme and one bundle id. For iOS, open the project and
+pick an iPhone/iPad destination:
 
 ```bash
 ./scripts/configure.sh && open MyWidgets.xcodeproj
 ```
 
-A device install needs a provisioning profile, so the iOS targets use automatic
+A device install needs a provisioning profile, so the iOS side uses automatic
 signing and Xcode manages it — there's no Developer ID path like on the Mac. The
 simulator needs nothing.
 
@@ -170,19 +172,20 @@ runner has no UI session, so signing against the login keychain fails with
 ## Layout
 
 ```
-App/          settings views (all platforms) + the macOS window and menu-bar panel
-iOS/          the iPhone/iPad app entry point and its asset catalog
+App/          the app: entry point, window/scene shells, settings views
 Widget/       widget definitions, timelines, views, configuration intents
-Shared/       models, config, palette, shared UI — compiled into every target
+Shared/       models, config, palette, shared UI — compiled into both targets
 scripts/      configure, release build, CI secrets, local config sync
+entitlements/ generated per platform (gitignored)
 local-config/ this machine's real config and build identity (gitignored)
-project.yml   xcodegen project definition (4 targets: app + widget, ×2 platforms)
+project.yml   xcodegen definition — 2 multiplatform targets: app + widget
 ```
 
-The iOS targets reuse `App/` and exclude what can't work there — `MyWidgetsApp.swift`
-(MenuBarExtra, SMAppService, NSWorkspace), `AccountSettingsView.swift`,
-`SelfFetch.swift` (shells out to `security`) and `UsageWidget.swift`. See the
-comments in `project.yml`.
+Platform differences are `#if os(macOS)` in the source, not separate targets:
+the menu-bar panel and login item, `SelfFetch.swift` (shells out to `security`),
+`UsageWidget.swift` and `AccountSettingsView.swift`. What genuinely can't be
+shared is conditioned per SDK in `project.yml` — signing, and the App Group,
+which macOS and iOS spell differently.
 
 Config that both targets read lives in `Shared/*Config.swift`, each backed by a
 JSON file in the App Group container: `grafana.json`, `webcams.json`,

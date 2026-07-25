@@ -55,53 +55,42 @@ enum BuildConfig {
 }
 SWIFT
 
-# ── Entitlements: the App Group has to be spelled out in both ────────────────
-cat > App/App.entitlements <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>com.apple.security.application-groups</key>
-    <array>
-        <string>$APP_GROUP</string>
-    </array>
-</dict>
-</plist>
-PLIST
+# ── Entitlements ─────────────────────────────────────────────────────────────
+# Written to entitlements/, which is NOT a source path — Xcode reads these via
+# CODE_SIGN_ENTITLEMENTS only, so they must not be picked up as resources.
+mkdir -p entitlements
 
-cat > Widget/Widget.entitlements <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>com.apple.security.app-sandbox</key>
-    <true/>
-    <key>com.apple.security.network.client</key>
-    <true/>
-    <key>com.apple.security.application-groups</key>
-    <array>
-        <string>$APP_GROUP</string>
-    </array>
-</dict>
-</plist>
-PLIST
+sandbox_keys() {
+    # macOS needs the sandbox and network client declared; on iOS both are
+    # implicit and listing them is rejected.
+    if [ "$1" = macOS ]; then
+        printf '    <key>com.apple.security.app-sandbox</key>\n    <true/>\n    <key>com.apple.security.network.client</key>\n    <true/>\n'
+    fi
+}
 
-# iOS: no sandbox/network keys (both are implicit), and the group.* form.
-for f in iOS/iOSApp.entitlements iOS/iOSWidget.entitlements; do
-    mkdir -p "$(dirname "$f")"
-    cat > "$f" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>com.apple.security.application-groups</key>
-    <array>
-        <string>$APP_GROUP_IOS</string>
-    </array>
-</dict>
-</plist>
-PLIST
-done
+write_entitlements() {
+    local file="$1" platform="$2" group="$3" sandbox="$4"
+    {
+        echo '<?xml version="1.0" encoding="UTF-8"?>'
+        echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+        echo '<plist version="1.0">'
+        echo '<dict>'
+        [ "$sandbox" = yes ] && sandbox_keys "$platform"
+        echo '    <key>com.apple.security.application-groups</key>'
+        echo '    <array>'
+        echo "        <string>$group</string>"
+        echo '    </array>'
+        echo '</dict>'
+        echo '</plist>'
+    } > "$file"
+}
+
+# The app bundle itself is not sandboxed on macOS (it runs the `security` CLI);
+# the widget extension is.
+write_entitlements entitlements/macOS.entitlements       macOS "$APP_GROUP"     no
+write_entitlements entitlements/macOSWidget.entitlements macOS "$APP_GROUP"     yes
+write_entitlements entitlements/iOS.entitlements         iOS   "$APP_GROUP_IOS" no
+write_entitlements entitlements/iOSWidget.entitlements   iOS   "$APP_GROUP_IOS" no
 
 # xcodegen expands ${VAR} in project.yml from the environment.
 xcodegen generate >/dev/null

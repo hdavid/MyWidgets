@@ -1,21 +1,26 @@
 import SwiftUI
 import WidgetKit
+#if os(macOS)
 import ServiceManagement
+#else
+import UIKit
+#endif
 
+/// One app for macOS, iOS and iPadOS. The settings tabs are shared; what differs
+/// is the shell around them (a resizable window plus a menu-bar panel on the Mac,
+/// a plain scene on the phone) and Claude usage, which only a Mac can read.
 @main
 struct MyWidgetsApp: App {
+    #if os(macOS)
     @StateObject private var model = UsageAppModel()
+    #endif
 
     var body: some Scene {
+        #if os(macOS)
         // A real window (Dock icon, double-clickable) …
         Window("My Widgets", id: "main") {
             MainWindowView(model: model)
-                // Widget clicks land here — forward web URLs to the browser.
-                .onOpenURL { url in
-                    if url.scheme == "https" || url.scheme == "http" {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
+                .onOpenURL(perform: openExternally)
         }
         .windowResizability(.contentSize)
 
@@ -31,10 +36,83 @@ struct MyWidgetsApp: App {
             }
         }
         .menuBarExtraStyle(.window)
+        #else
+        WindowGroup {
+            MainWindowView()
+                .onOpenURL(perform: openExternally)
+        }
+        #endif
+    }
+
+    /// Widget clicks land in the app — hand web URLs straight to the browser.
+    private func openExternally(_ url: URL) {
+        guard url.scheme == "https" || url.scheme == "http" else { return }
+        #if os(macOS)
+        NSWorkspace.shared.open(url)
+        #else
+        UIApplication.shared.open(url)
+        #endif
     }
 }
 
+// MARK: - Main window / root view
+
+struct MainWindowView: View {
+    #if os(macOS)
+    @ObservedObject var model: UsageAppModel
+    #endif
+
+    var body: some View {
+        // Claude usage summary intentionally NOT in the window — the menu-bar
+        // panel and the widget already show it.
+        #if os(macOS)
+        TabView {
+            GrafanaSettingsView()
+                .tabItem { Label("Grafana", systemImage: "chart.xyaxis.line") }
+            WindguruSettingsView()
+                .tabItem { Label("Windguru", systemImage: "wind") }
+            CamSettingsView()
+                .tabItem { Label("Webcams", systemImage: "video") }
+            AccountSettingsView(model: model)
+                .tabItem { Label("Claude", systemImage: "person.2") }
+            ConfigSettingsView()
+                .tabItem { Label("Config", systemImage: "arrow.up.arrow.down.circle") }
+        }
+        // Tabs are shorter than the window; without this a short tab's content
+        // floats in the vertical centre instead of sitting under the tab bar.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(12)
+        .frame(width: 620, height: 620)
+        #else
+        TabView {
+            phoneTab(GrafanaSettingsView(), "Grafana", "chart.xyaxis.line")
+            phoneTab(WindguruSettingsView(), "Windguru", "wind")
+            phoneTab(CamSettingsView(), "Webcams", "video")
+            phoneTab(ConfigSettingsView(), "Config", "arrow.up.arrow.down.circle")
+        }
+        #endif
+    }
+
+    #if !os(macOS)
+    /// Each tab gets its own navigation stack so the title stays put while the
+    /// form scrolls, and so an iPad lays them out sensibly.
+    private func phoneTab<V: View>(_ view: V, _ title: String, _ icon: String) -> some View {
+        NavigationStack {
+            view
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+        }
+        .tabItem { Label(title, systemImage: icon) }
+    }
+    #endif
+}
+
+#if os(macOS)
+
 // MARK: - Model (fetch engine + timer + login item)
+//
+// macOS only: reading a Claude Code credential means running the `security` CLI,
+// which iOS has no equivalent for.
 
 @MainActor
 final class UsageAppModel: ObservableObject {
@@ -93,35 +171,7 @@ final class UsageAppModel: ObservableObject {
     }
 }
 
-// MARK: - Main window (tabs: usage / accounts / widgets)
-
-struct MainWindowView: View {
-    @ObservedObject var model: UsageAppModel
-
-    var body: some View {
-        // Claude usage summary intentionally NOT in the window — the menu-bar
-        // panel and the widget already show it.
-        TabView {
-            GrafanaSettingsView()
-                .tabItem { Label("Grafana", systemImage: "chart.xyaxis.line") }
-            WindguruSettingsView()
-                .tabItem { Label("Windguru", systemImage: "wind") }
-            CamSettingsView()
-                .tabItem { Label("Webcams", systemImage: "video") }
-            AccountSettingsView(model: model)
-                .tabItem { Label("Claude", systemImage: "person.2") }
-            ConfigSettingsView()
-                .tabItem { Label("Config", systemImage: "arrow.up.arrow.down.circle") }
-        }
-        // Tabs are shorter than the window; without this a short tab's content
-        // floats in the vertical centre instead of sitting under the tab bar.
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(12)
-        .frame(width: 620, height: 620)
-    }
-}
-
-// MARK: - Claude usage panel (shared by window tab and menu bar)
+// MARK: - Claude usage panel (menu bar)
 
 struct PanelView: View {
     @ObservedObject var model: UsageAppModel
@@ -171,3 +221,5 @@ struct PanelView: View {
         .frame(width: 360)
     }
 }
+
+#endif

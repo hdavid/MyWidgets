@@ -1,3 +1,5 @@
+// macOS only — Claude usage can't be read on iOS, so there's nothing to configure.
+#if os(macOS)
 import SwiftUI
 import WidgetKit
 
@@ -63,3 +65,5 @@ struct AccountSettingsView: View {
         .onAppear { specs = AccountsConfig.load() }
     }
 }
+
+#endif

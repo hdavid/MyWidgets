@@ -1,3 +1,6 @@
+// macOS only: reads Claude Code credentials by running the `security` CLI,
+// which iOS has no equivalent for.
+#if os(macOS)
 import Foundation
 
 /// Claude usage fetcher — the "weather widget" pattern: reads tokens from the
@@ -137,3 +140,5 @@ enum SelfFetch {
                         accounts: accounts, source: "widget")
     }
 }
+
+#endif

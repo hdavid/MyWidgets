@@ -1,3 +1,5 @@
+// macOS only — depends on SelfFetch, which shells out to `security`.
+#if os(macOS)
 import WidgetKit
 import SwiftUI
 
@@ -142,3 +144,5 @@ struct ClaudeUsageWidget: Widget {
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
+
+#endif
