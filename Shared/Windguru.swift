@@ -5,11 +5,13 @@ import Foundation
 // Every named single model is fetchable on the public iapi endpoint — no login.
 // The blended "WG" (wgmix, id 100) is intentionally absent: windguru computes it
 // in the browser by mixing the models below, so there is no server dataset for
-// it and no token can fetch it. AROME-FR 1.3 km is the highest-resolution model
-// here (and the dominant near-term component of WG). Wind values come back in
-// knots for spot 67620, matching the windColor scale the live-wind widget uses.
-// IDs/names were verified against spot 67620's `q=spot` model list (tab order)
-// plus a per-model probe.
+// it and no token can fetch it. Wind values come back in knots, matching the
+// windColor scale the metrics widget uses.
+//
+// Which models a given spot actually offers varies by region — ask the spot with
+// `q=spot` (see `Windguru.spotModels`) rather than assuming. IDs and names below
+// were read from a spot's model list (tab order) plus a per-model probe; the
+// order here is highest-resolution first.
 
 struct WindguruModel: Identifiable, Hashable {
     let id: Int          // id_model
@@ -58,13 +60,33 @@ enum WindguruDaytime {
     static let range = 8...21   // 08h … 21h inclusive
 }
 
-// MARK: - Settings (shared via the App Group container)
+// MARK: - Spots (shared via the App Group container)
 
-struct WindguruSettings: Codable, Equatable {
-    var spotId: Int = 67620
-    var idModel: Int = 52          // AROME-FR 1.3 km — best model for this spot
+/// One configured windguru spot. Added and removed freely in the app's Windguru
+/// tab; a placed forecast widget stores which one it shows in its own
+/// configuration intent, so this list can be any length.
+struct WindguruSpot: Codable, Identifiable, Equatable {
+    var id: String
+    /// Widget heading. Empty falls back to the spot id, since windguru's iapi
+    /// doesn't return a spot name.
+    var title: String
+    /// 0 means "not configured yet" — the widget says so instead of fetching.
+    var spotId: Int
+    var idModel: Int
 
-    static let `default` = WindguruSettings()
+    /// GFS 13 km is the one model available for every spot on earth, so it is
+    /// the only sane default before a spot is known. Higher-resolution regional
+    /// models are offered once "Load models" has asked the spot what it has.
+    init(id: String = UUID().uuidString, title: String = "",
+         spotId: Int = 0, idModel: Int = 3) {
+        self.id = id
+        self.title = title
+        self.spotId = spotId
+        self.idModel = idModel
+    }
+
+    var isConfigured: Bool { spotId > 0 }
+    var heading: String { title.isEmpty ? "Spot \(spotId)" : title }
 }
 
 enum WindguruConfig {
@@ -76,24 +98,39 @@ enum WindguruConfig {
             .appendingPathComponent(fileName)
     }
 
-    static func load() -> WindguruSettings {
-        guard let url = fileURL,
-              let data = try? Data(contentsOf: url),
-              var s = try? JSONDecoder().decode(WindguruSettings.self, from: data)
-        else { return .default }
-        // Migrate away from the old blended "WG" id (100), which isn't fetchable.
-        if WindguruCatalog.model(s.idModel) == nil { s.idModel = 52 }
-        return s
+    static let defaultSpots = [WindguruSpot(id: "default", title: "Forecast")]
+
+    static func load() -> [WindguruSpot] {
+        guard let url = fileURL, let data = try? Data(contentsOf: url) else {
+            return defaultSpots
+        }
+        guard var spots = try? JSONDecoder().decode([WindguruSpot].self, from: data),
+              !spots.isEmpty
+        else { return defaultSpots }
+        // Drop unknown model ids — notably the old blended "WG" (100), which
+        // windguru computes in the browser and no endpoint will serve.
+        for i in spots.indices where WindguruCatalog.model(spots[i].idModel) == nil {
+            spots[i].idModel = 3
+        }
+        return spots
+    }
+
+    /// The spot a widget instance is bound to, falling back to the first one so a
+    /// widget placed before anything was configured still shows something.
+    static func spot(_ id: String?) -> WindguruSpot? {
+        let all = load()
+        guard let id else { return all.first }
+        return all.first { $0.id == id } ?? all.first
     }
 
     @discardableResult
-    static func save(_ s: WindguruSettings) -> Bool {
+    static func save(_ spots: [WindguruSpot]) -> Bool {
         guard let url = fileURL else { return false }
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? enc.encode(s) else { return false }
+        guard let data = try? enc.encode(spots) else { return false }
         return (try? data.write(to: url, options: .atomic)) != nil
     }
 }
@@ -201,9 +238,10 @@ enum Windguru {
                                 points: points, fetchedAt: Date())
     }
 
-    /// Fetch the configured model; on failure fall back to AROME-FR 1.3 km so
-    /// the widget still shows something useful.
-    static func fetch(_ s: WindguruSettings) async -> WindguruForecast? {
+    /// Fetch the spot's chosen model; on failure fall back to GFS, which every
+    /// spot has, so the widget still shows something useful.
+    static func fetch(_ s: WindguruSpot) async -> WindguruForecast? {
+        guard s.isConfigured else { return nil }
         if let f = await fetchModel(spot: s.spotId, model: s.idModel),
            let parsed = parse(f) {
             return parsed
@@ -215,22 +253,25 @@ enum Windguru {
     }
 }
 
-/// Model used when the configured one can't be fetched.
-enum WindguruFallback { static let model = 52 } // AROME-FR 1.3 km
+/// Model used when the configured one can't be fetched — GFS 13 km is the one
+/// model every spot on earth exposes.
+enum WindguruFallback { static let model = 3 }
 
 // MARK: - Last-good-forecast cache
 
 enum ForecastStore {
-    private static let key = "lastForecast"
+    /// Per spot: several forecast widgets can be placed, each on its own spot,
+    /// and one must not overwrite another's last-good values.
+    private static func key(_ spotID: String) -> String { "lastForecast_\(spotID)" }
 
-    static func save(_ f: WindguruForecast) {
+    static func save(_ f: WindguruForecast, for spotID: String) {
         if let data = try? JSONEncoder().encode(f) {
-            UserDefaults.standard.set(data, forKey: key)
+            UserDefaults.standard.set(data, forKey: key(spotID))
         }
     }
 
-    static func load() -> WindguruForecast? {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+    static func load(for spotID: String) -> WindguruForecast? {
+        guard let data = UserDefaults.standard.data(forKey: key(spotID)) else { return nil }
         return try? JSONDecoder().decode(WindguruForecast.self, from: data)
     }
 }

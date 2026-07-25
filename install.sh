@@ -25,7 +25,7 @@ echo "==> Build number: $CUR → $NEW"
 # Release (NOT Debug): Debug widget extensions use a preview-dylib shim that
 # WidgetKit won't reload outside Xcode, so a placed widget keeps old code.
 echo "==> Building (Release)…"
-xcodegen generate >/dev/null
+bash scripts/configure.sh
 xcodebuild -project "$ROOT/MyWidgets.xcodeproj" -scheme MyWidgets \
     -destination "generic/platform=macOS" \
     -configuration Release -derivedDataPath "$BUILD_DIR" build >/dev/null
@@ -36,16 +36,6 @@ osascript -e 'quit app "MyWidgets"' 2>/dev/null || true
 sleep 1
 rm -rf "$APP_DST"
 cp -R "$APP_SRC" "$APP_DST"
-
-# Retire the apps this one replaces (projects stay on disk).
-for OLD in "/Applications/MoutiersWind.app" "/Applications/ClaudeUsage.app"; do
-    if [ -d "$OLD" ]; then
-        echo "==> Removing superseded $(basename "$OLD")"
-        osascript -e "quit app \"$(basename "$OLD" .app)\"" 2>/dev/null || true
-        sleep 1
-        rm -rf "$OLD"
-    fi
-done
 
 echo "==> Registering with Launch Services and starting"
 LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
@@ -62,7 +52,7 @@ background (launch-at-login) — wind and webcams need no app at all.
 
 Add widgets (only a user gesture can do this):
   • Desktop: right-click → Edit Widgets → "My Widgets"
-  • Widgets from the old MoutiersWind/ClaudeUsage apps must be re-added.
+  • Right-click a placed widget → Edit Widget to pick which source/spot/webcam.
 
 Configure Claude accounts in the app's "Accounts" tab.
 EOF

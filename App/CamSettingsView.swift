@@ -22,16 +22,31 @@ struct CamSettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                ForEach($specs) { $spec in
-                    camCard($spec)
-                }
+                ConfigEntryList(
+                    items: $specs,
+                    addLabel: "Add webcam",
+                    newItem: { CamSpec(name: "New webcam") },
+                    header: { spec in
+                        TextField("Name shown on the frame", text: spec.name)
+                    },
+                    detail: { spec in
+                        VStack(alignment: .leading, spacing: 5) {
+                            TextField("Image URL (https://…/latest.jpg)", text: spec.imageURL)
+                                .font(.system(.caption, design: .monospaced))
+                            TextField("Page URL opened on click", text: spec.pageURL)
+                                .font(.system(.caption, design: .monospaced))
+                            HStack {
+                                Text("Refresh").font(.caption).foregroundStyle(.secondary)
+                                TextField("5", value: spec.refreshMinutes,
+                                          format: .number.grouping(.never))
+                                    .frame(width: 44)
+                                Text("min").font(.caption).foregroundStyle(.secondary)
+                                Spacer()
+                            }
+                        }
+                    })
 
                 HStack(spacing: 8) {
-                    Button {
-                        specs.append(CamSpec(name: "New webcam"))
-                    } label: {
-                        Label("Add webcam", systemImage: "plus")
-                    }
                     if busy { ProgressView().controlSize(.small) }
                     if let status {
                         Text(status).font(.caption).foregroundStyle(statusColor)
@@ -48,34 +63,6 @@ struct CamSettingsView: View {
         }
         .textFieldStyle(.roundedBorder)
         .onAppear { specs = CamsConfig.load() }
-    }
-
-    private func camCard(_ spec: Binding<CamSpec>) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack {
-                TextField("Name shown on the frame", text: spec.name)
-                Text("Refresh").font(.caption).foregroundStyle(.secondary)
-                TextField("5", value: spec.refreshMinutes,
-                          format: .number.grouping(.never))
-                    .frame(width: 44)
-                Text("min").font(.caption).foregroundStyle(.secondary)
-                Button(role: .destructive) {
-                    let id = spec.id.wrappedValue
-                    specs.removeAll { $0.id == id }
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.borderless)
-                .disabled(specs.count == 1)
-            }
-            TextField("Image URL (https://…/latest.jpg)", text: spec.imageURL)
-                .font(.system(.caption, design: .monospaced))
-            TextField("Page URL opened on click", text: spec.pageURL)
-                .font(.system(.caption, design: .monospaced))
-        }
-        .padding(8)
-        .background(Color.primary.opacity(0.04),
-                    in: RoundedRectangle(cornerRadius: 8))
     }
 
     /// Save, then HEAD-check each configured image URL so a typo shows up here

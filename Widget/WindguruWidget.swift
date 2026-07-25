@@ -7,37 +7,39 @@ struct ForecastEntry: TimelineEntry {
     let date: Date
     let forecast: WindguruForecast?
     let stale: Bool
+    /// Captured with the entry so the header names the spot the values came from.
+    let spot: WindguruSpot?
 }
 
-struct ForecastProvider: TimelineProvider {
+struct ForecastProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> ForecastEntry {
-        ForecastEntry(date: Date(), forecast: ForecastStore.load(), stale: false)
+        let spot = WindguruConfig.load().first
+        return ForecastEntry(date: Date(),
+                             forecast: spot.flatMap { ForecastStore.load(for: $0.id) },
+                             stale: false, spot: spot)
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (ForecastEntry) -> Void) {
-        if context.isPreview {
-            completion(ForecastEntry(date: Date(), forecast: ForecastStore.load(), stale: false))
-            return
-        }
-        Task { completion(await makeEntry()) }
+    func snapshot(for configuration: SelectSpotIntent, in context: Context) async -> ForecastEntry {
+        await makeEntry(configuration.spot?.id)
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<ForecastEntry>) -> Void) {
-        Task {
-            let entry = await makeEntry()
-            // Models refresh a few times a day; an hourly reload keeps the
-            // strip anchored to the current time cheaply.
-            let next = Date().addingTimeInterval(60 * 60)
-            completion(Timeline(entries: [entry], policy: .after(next)))
-        }
+    func timeline(for configuration: SelectSpotIntent, in context: Context) async -> Timeline<ForecastEntry> {
+        let entry = await makeEntry(configuration.spot?.id)
+        // Models refresh a few times a day; an hourly reload keeps the strip
+        // anchored to the current time cheaply.
+        return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(60 * 60)))
     }
 
-    private func makeEntry() async -> ForecastEntry {
-        if let fresh = await Windguru.fetch(WindguruConfig.load()) {
-            ForecastStore.save(fresh)
-            return ForecastEntry(date: Date(), forecast: fresh, stale: false)
+    private func makeEntry(_ spotID: String?) async -> ForecastEntry {
+        guard let spot = WindguruConfig.spot(spotID) else {
+            return ForecastEntry(date: Date(), forecast: nil, stale: true, spot: nil)
         }
-        return ForecastEntry(date: Date(), forecast: ForecastStore.load(), stale: true)
+        if let fresh = await Windguru.fetch(spot) {
+            ForecastStore.save(fresh, for: spot.id)
+            return ForecastEntry(date: Date(), forecast: fresh, stale: false, spot: spot)
+        }
+        return ForecastEntry(date: Date(), forecast: ForecastStore.load(for: spot.id),
+                             stale: true, spot: spot)
     }
 }
 
@@ -199,6 +201,7 @@ private struct ForecastLine: View {
 // MARK: - Header
 
 private struct ForecastHeader: View {
+    let title: String
     let forecast: WindguruForecast
     let stale: Bool
     var size: CGFloat
@@ -206,7 +209,7 @@ private struct ForecastHeader: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Text("Les Moutiers en Retz")
+            Text(title)
                 .font(.system(size: size, weight: .bold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -233,6 +236,7 @@ private struct ForecastHeader: View {
 // MARK: - Family layouts (2 dense windguru-style lines)
 
 private struct ForecastGrid: View {
+    let title: String
     let forecast: WindguruForecast
     let stale: Bool
     let columns: Int
@@ -246,8 +250,8 @@ private struct ForecastGrid: View {
     var body: some View {
         let pts = forecast.upcoming(hours: columns * lines)
         VStack(alignment: .leading, spacing: lineGap) {
-            ForecastHeader(forecast: forecast, stale: stale, size: headerSize,
-                           days: dayRange(pts))
+            ForecastHeader(title: title, forecast: forecast, stale: stale,
+                           size: headerSize, days: dayRange(pts))
                 .padding(.bottom, -1)
             ForEach(0..<lines, id: \.self) { line in
                 let slice = Array(pts.dropFirst(line * columns).prefix(columns))
@@ -279,31 +283,39 @@ struct ForecastWidgetView: View {
 
     var body: some View {
         Group {
-            if let f = entry.forecast, !f.upcoming(hours: 1).isEmpty {
+            if let spot = entry.spot, let f = entry.forecast,
+               !f.upcoming(hours: 1).isEmpty {
                 // 14 columns is one full daylight span (08h…21h), so each line
                 // reads as roughly one day of the strip.
                 switch family {
                 case .systemMedium:
-                    ForecastGrid(forecast: f, stale: entry.stale, columns: 14, lines: 2,
+                    ForecastGrid(title: spot.heading, forecast: f, stale: entry.stale,
+                                 columns: 14, lines: 2,
                                  m: .init(labelSize: 9, valueSize: 11, cellHeight: 12,
                                           arrowSize: 9),
                                  headerSize: 11, lineGap: 4)
                 case .systemLarge, .systemExtraLarge:
-                    ForecastGrid(forecast: f, stale: entry.stale, columns: 14, lines: 4,
+                    ForecastGrid(title: spot.heading, forecast: f, stale: entry.stale,
+                                 columns: 14, lines: 4,
                                  m: .init(labelSize: 10, valueSize: 12, cellHeight: 14,
                                           arrowSize: 10),
                                  headerSize: 13, lineGap: 5)
                 default:
-                    ForecastGrid(forecast: f, stale: entry.stale, columns: 7, lines: 2,
+                    ForecastGrid(title: spot.heading, forecast: f, stale: entry.stale,
+                                 columns: 7, lines: 2,
                                  m: .init(labelSize: 9, valueSize: 10, cellHeight: 11,
                                           arrowSize: 8),
                                  headerSize: 10, lineGap: 4)
                 }
             } else {
-                NoForecastView()
+                NoForecastView(message: entry.spot?.isConfigured == true
+                               ? "No forecast yet"
+                               : "Add a windguru spot in the app’s Windguru tab")
             }
         }
-        .widgetURL(Windguru.pageURL(spot: WindguruConfig.load().spotId))
+        .widgetURL(entry.spot.flatMap {
+            $0.isConfigured ? Windguru.pageURL(spot: $0.spotId) : nil
+        })
         .containerBackground(for: .widget) { Pal.bg }
     }
 }
@@ -311,27 +323,33 @@ struct ForecastWidgetView: View {
 // MARK: - No-data fallback
 
 struct NoForecastView: View {
+    var message = "No forecast yet"
+
     var body: some View {
         VStack(spacing: 6) {
             Image(systemName: "cloud.sun.fill")
                 .font(.title)
                 .foregroundStyle(Pal.gray)
-            Text("No forecast yet")
+            Text(message)
                 .font(.caption)
                 .foregroundStyle(Pal.gray)
+                .multilineTextAlignment(.center)
         }
+        .padding(8)
     }
 }
 
 // MARK: - Widget
 
-struct MoutiersForecastWidget: Widget {
+/// One kind, added as many times as you like — each copy picks its spot.
+struct ForecastWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "MoutiersForecast", provider: ForecastProvider()) { entry in
+        AppIntentConfiguration(kind: "WindguruForecast", intent: SelectSpotIntent.self,
+                               provider: ForecastProvider()) { entry in
             ForecastWidgetView(entry: entry)
         }
-        .configurationDisplayName("Moutiers Forecast")
-        .description("Windguru hourly wind forecast (knots), daylight hours")
+        .configurationDisplayName("Windguru Forecast")
+        .description("Hourly wind forecast (knots), daylight hours. Right-click → Edit Widget to pick the spot.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }

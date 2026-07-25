@@ -85,3 +85,41 @@ struct SelectSourceIntent: WidgetConfigurationIntent {
     @Parameter(title: "Source")
     var source: SourceEntity?
 }
+
+// MARK: - Windguru spot
+
+struct SpotEntity: AppEntity, Identifiable {
+    let id: String
+    let name: String
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation { "Spot" }
+    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
+    static var defaultQuery = SpotEntityQuery()
+
+    init(_ spot: WindguruSpot) {
+        id = spot.id
+        name = spot.heading
+    }
+}
+
+struct SpotEntityQuery: EntityQuery {
+    func entities(for identifiers: [String]) async throws -> [SpotEntity] {
+        WindguruConfig.load().filter { identifiers.contains($0.id) }.map(SpotEntity.init)
+    }
+
+    func suggestedEntities() async throws -> [SpotEntity] {
+        WindguruConfig.load().map(SpotEntity.init)
+    }
+
+    func defaultResult() async -> SpotEntity? {
+        WindguruConfig.load().first.map(SpotEntity.init)
+    }
+}
+
+struct SelectSpotIntent: WidgetConfigurationIntent {
+    static var title: LocalizedStringResource = "Forecast spot"
+    static var description = IntentDescription("Choose which windguru spot this widget shows.")
+
+    @Parameter(title: "Spot")
+    var spot: SpotEntity?
+}

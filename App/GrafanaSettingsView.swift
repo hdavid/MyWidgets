@@ -11,13 +11,11 @@ import WidgetKit
 /// shared App Group container, never in source.
 struct GrafanaSettingsView: View {
     @State private var sources: [GrafanaSource] = GrafanaConfig.load()
-    @State private var selectedID: String = ""
     @State private var status: String?
     @State private var statusColor: Color = .secondary
     @State private var busy = false
-    @State private var probe: WindSnapshot?
-
-    private var index: Int? { sources.firstIndex { $0.id == selectedID } }
+    /// Last test's values, per source, so each slot can preview what it renders.
+    @State private var probes: [String: WindSnapshot] = [:]
 
     var body: some View {
         ScrollView {
@@ -28,16 +26,21 @@ struct GrafanaSettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                sourcePicker
-
-                if let i = index {
-                    connectionSection(i)
-                    Divider()
-                    slotsSection(i)
-                } else {
-                    Text("No sources — add one above.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                ConfigEntryList(
+                    items: $sources,
+                    addLabel: "Add source",
+                    newItem: { GrafanaSource(title: "New source") },
+                    duplicate: duplicate,
+                    header: { source in
+                        TextField("Name shown as the widget heading", text: source.title)
+                    },
+                    detail: { source in
+                        VStack(alignment: .leading, spacing: 10) {
+                            connectionFields(source)
+                            Divider()
+                            slotsSection(source)
+                        }
+                    })
 
                 HStack(spacing: 8) {
                     if busy { ProgressView().controlSize(.small) }
@@ -48,99 +51,54 @@ struct GrafanaSettingsView: View {
                     Spacer()
                     Button("Save & test") { Task { await saveAndTest() } }
                         .keyboardShortcut(.defaultAction)
-                        .disabled(busy || index == nil)
+                        .disabled(busy || sources.isEmpty)
                 }
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .textFieldStyle(.roundedBorder)
-        .onAppear {
-            sources = GrafanaConfig.load()
-            if index == nil { selectedID = sources.first?.id ?? "" }
-        }
+        .onAppear { sources = GrafanaConfig.load() }
     }
 
-    // MARK: Source list
-
-    private var sourcePicker: some View {
-        HStack(spacing: 8) {
-            Picker("", selection: $selectedID) {
-                ForEach(sources) { Text($0.title.isEmpty ? "Untitled" : $0.title).tag($0.id) }
-            }
-            .labelsHidden()
-            .frame(width: 200)
-
-            Button {
-                let new = GrafanaSource(title: "New source")
-                sources.append(new)
-                selectedID = new.id
-                probe = nil
-            } label: {
-                Label("Add", systemImage: "plus")
-            }
-
-            // Duplicating is the quick path to a second station: same slot
-            // shapes, different host or measurement names.
-            Button {
-                guard let i = index else { return }
-                var copy = sources[i]
-                copy.id = UUID().uuidString
-                copy.title += " copy"
-                copy.slots = copy.slots.map { slot in
-                    var s = slot
-                    s.id = UUID().uuidString
-                    return s
-                }
-                sources.insert(copy, at: i + 1)
-                selectedID = copy.id
-                probe = nil
-            } label: {
-                Label("Duplicate", systemImage: "plus.square.on.square")
-            }
-            .disabled(index == nil)
-
-            Spacer()
-
-            Button(role: .destructive) {
-                guard let i = index else { return }
-                sources.remove(at: i)
-                selectedID = sources.first?.id ?? ""
-                probe = nil
-            } label: {
-                Label("Remove", systemImage: "trash")
-            }
-            .disabled(sources.count <= 1)
+    /// Copy a source with fresh ids — the quick path to a second station with the
+    /// same slot shapes but a different host or measurement names.
+    private func duplicate(_ i: Int) {
+        var copy = sources[i]
+        copy.id = UUID().uuidString
+        copy.title += " copy"
+        copy.slots = copy.slots.map { slot in
+            var s = slot
+            s.id = UUID().uuidString
+            return s
         }
+        sources.insert(copy, at: i + 1)
     }
 
     // MARK: Connection
 
-    private func connectionSection(_ i: Int) -> some View {
+    private func connectionFields(_ source: Binding<GrafanaSource>) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            labelled("Title") {
-                TextField("Widget heading", text: $sources[i].title)
-            }
             labelled("Grafana") {
-                TextField("https://host/grafana", text: $sources[i].baseURL)
+                TextField("https://host/grafana", text: source.baseURL)
                     .font(.system(.caption, design: .monospaced))
             }
             labelled("Token") {
                 HStack(spacing: 6) {
-                    SecureField("glsa_… (service-account token)", text: $sources[i].token)
+                    SecureField("glsa_… (service-account token)", text: source.token)
                         .font(.system(.caption, design: .monospaced))
-                    if sources[i].token.isEmpty {
+                    if source.token.wrappedValue.isEmpty {
                         Text("required").font(.caption2).foregroundStyle(.orange)
                     }
                 }
             }
             labelled("Data source") {
                 HStack(spacing: 12) {
-                    TextField("1", value: $sources[i].datasourceId,
+                    TextField("1", value: source.datasourceId,
                               format: .number.grouping(.never))
                         .frame(width: 50)
                     Text("Window").font(.caption).foregroundStyle(.secondary)
-                    TextField("now-3h", text: $sources[i].window)
+                    TextField("now-3h", text: source.window)
                         .frame(width: 90)
                         .font(.system(.caption, design: .monospaced))
                     Spacer()
@@ -148,7 +106,7 @@ struct GrafanaSettingsView: View {
             }
             labelled("Dashboard") {
                 TextField("URL opened when the widget is clicked",
-                          text: $sources[i].dashboardURL)
+                          text: source.dashboardURL)
                     .font(.system(.caption, design: .monospaced))
             }
         }
@@ -167,13 +125,13 @@ struct GrafanaSettingsView: View {
 
     // MARK: Slots
 
-    private func slotsSection(_ i: Int) -> some View {
+    private func slotsSection(_ source: Binding<GrafanaSource>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Slots").font(.system(size: 12, weight: .semibold))
                 Spacer()
                 Button {
-                    sources[i].slots.append(
+                    source.slots.wrappedValue.append(
                         MetricSlot(role: .chip, query: "SELECT last(value) FROM autogen."))
                 } label: {
                     Label("Add chip", systemImage: "plus")
@@ -181,8 +139,8 @@ struct GrafanaSettingsView: View {
                 .buttonStyle(.borderless)
             }
 
-            ForEach($sources[i].slots) { $slot in
-                slotCard($slot, in: i)
+            ForEach(source.slots) { $slot in
+                slotCard($slot, in: source)
             }
 
             Text("Roles other than Chip fill a single place in the layout — if two slots share one, the first enabled slot wins. “Dew spread” colours by how close the value is to the Temperature-scaled slot.")
@@ -192,7 +150,8 @@ struct GrafanaSettingsView: View {
         }
     }
 
-    private func slotCard(_ slot: Binding<MetricSlot>, in i: Int) -> some View {
+    private func slotCard(_ slot: Binding<MetricSlot>,
+                          in source: Binding<GrafanaSource>) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
                 Toggle("", isOn: slot.enabled)
@@ -215,12 +174,12 @@ struct GrafanaSettingsView: View {
                 Spacer(minLength: 0)
                 Button(role: .destructive) {
                     let id = slot.id.wrappedValue
-                    sources[i].slots.removeAll { $0.id == id }
+                    source.slots.wrappedValue.removeAll { $0.id == id }
                 } label: {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
-                .disabled(sources[i].slots.count == 1)
+                .disabled(source.slots.wrappedValue.count == 1)
             }
 
             HStack(spacing: 6) {
@@ -230,7 +189,7 @@ struct GrafanaSettingsView: View {
                 .labelsHidden()
                 .frame(width: 150)
                 .disabled(slot.role.wrappedValue == .series)
-                preview(slot.wrappedValue, in: i)
+                preview(slot.wrappedValue, in: source.wrappedValue)
                 Spacer(minLength: 0)
             }
 
@@ -246,22 +205,22 @@ struct GrafanaSettingsView: View {
             }
         }
         .padding(8)
-        .background(Color.primary.opacity(slot.enabled.wrappedValue ? 0.04 : 0.015),
-                    in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.primary.opacity(slot.enabled.wrappedValue ? 0.05 : 0.02),
+                    in: RoundedRectangle(cornerRadius: 6))
         .opacity(slot.enabled.wrappedValue ? 1 : 0.55)
     }
 
     /// What the widget would print for this slot, using the last test's values.
     @ViewBuilder
-    private func preview(_ slot: MetricSlot, in i: Int) -> some View {
+    private func preview(_ slot: MetricSlot, in source: GrafanaSource) -> some View {
+        let probe = probes[source.id]
         if slot.role == .series {
             Text(probe.map { "\($0.series.count) points" } ?? "sparkline")
                 .font(.caption).foregroundStyle(.secondary)
         } else {
             let v = probe?.values[slot.id]
             let ref = probe.flatMap { p in
-                sources[i].slots.first { $0.scale == .temperature }
-                    .flatMap { p.values[$0.id] }
+                source.slots.first { $0.scale == .temperature }.flatMap { p.values[$0.id] }
             }
             Text(slot.text(v, trend: probe?.trends[slot.id]))
                 .font(.system(size: 12, weight: .semibold))
@@ -283,31 +242,33 @@ struct GrafanaSettingsView: View {
         }
         WidgetCenter.shared.reloadTimelines(ofKind: "LiveMetrics")
 
-        guard let i = index else { return }
-        let source = sources[i]
-        guard source.isConfigured else {
-            status = "Saved, but a Grafana URL and token are both needed to fetch."
-            statusColor = .orange
-            return
+        var lines: [String] = []
+        var worst = Color.green
+        for source in sources {
+            guard source.isConfigured else {
+                lines.append("“\(source.title)”: needs a URL and token")
+                worst = .orange
+                continue
+            }
+            guard let snap = await Grafana.fetchAll(source) else {
+                lines.append("“\(source.title)”: nothing came back — check URL, token, data source id")
+                worst = .orange
+                continue
+            }
+            probes[source.id] = snap
+            let wanted = source.slots.filter { $0.enabled && !$0.query.isEmpty }
+            let missing = wanted.filter { s in
+                s.role == .series ? snap.series.isEmpty : snap.values[s.id] == nil
+            }
+            if missing.isEmpty {
+                lines.append("“\(source.title)”: all \(wanted.count) slots ✓")
+            } else {
+                let names = missing.map { $0.label.isEmpty ? $0.role.label : $0.label }
+                lines.append("“\(source.title)”: no data for \(names.joined(separator: ", "))")
+                worst = .orange
+            }
         }
-        guard let snap = await Grafana.fetchAll(source) else {
-            status = "Saved, but Grafana returned nothing — check the URL, token and data source id."
-            statusColor = .orange
-            return
-        }
-        probe = snap
-
-        let wanted = source.slots.filter { $0.enabled && !$0.query.isEmpty }
-        let missing = wanted.filter { s in
-            s.role == .series ? snap.series.isEmpty : snap.values[s.id] == nil
-        }
-        if missing.isEmpty {
-            status = "Saved ✓ — all \(wanted.count) slots of “\(source.title)” returned data."
-            statusColor = .green
-        } else {
-            let names = missing.map { $0.label.isEmpty ? $0.role.label : $0.label }
-            status = "Saved ✓ — no data for: \(names.joined(separator: ", "))."
-            statusColor = .orange
-        }
+        status = "Saved. " + lines.joined(separator: " · ")
+        statusColor = worst
     }
 }

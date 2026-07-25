@@ -50,8 +50,8 @@ fi
 # ── Build (Release) ───────────────────────────────────────────────────────────
 # Release, not Debug: Debug widget extensions use a preview-dylib shim that
 # WidgetKit won't reload outside Xcode, so a placed widget keeps stale code.
-echo "==> generating project"
-xcodegen generate >/dev/null
+echo "==> configuring"
+bash scripts/configure.sh
 
 echo "==> building (Release)"
 rm -rf "$BUILD_DIR" "$DIST"

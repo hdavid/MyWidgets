@@ -1,19 +1,38 @@
 import Foundation
 import SwiftUI
 
+#if canImport(AppKit)
+import AppKit
+typealias PlatformColor = NSColor
+#else
+import UIKit
+typealias PlatformColor = UIColor
+#endif
+
 // MARK: - Theme-adaptive palette (true dynamic colors: adapt instantly)
 //
 // Lives in Shared rather than the widget target because the app's settings
 // tabs need the same colors to preview a metric's scale.
+//
+// These are real dynamic platform colors, not `Color` chosen at build time, so a
+// light/dark switch repaints without the widget having to reload.
 
 private func dyn(_ light: String, _ dark: String) -> Color {
-    Color(nsColor: NSColor(name: nil) { appearance in
+    #if canImport(AppKit)
+    return Color(nsColor: NSColor(name: nil) { appearance in
         let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         return NSColor(hex: isDark ? dark : light)
     })
+    #else
+    return Color(uiColor: UIColor { traits in
+        UIColor(hex: traits.userInterfaceStyle == .dark ? dark : light)
+    })
+    #endif
 }
 
-extension NSColor {
+extension PlatformColor {
+    /// "#rrggbb" → color. The leading character is dropped, so "#abc123" and
+    /// any single-character prefix both work.
     convenience init(hex: String) {
         var v: UInt64 = 0
         Scanner(string: String(hex.dropFirst())).scanHexInt64(&v)
@@ -22,6 +41,19 @@ extension NSColor {
                   blue: CGFloat(v & 0xff) / 255,
                   alpha: 1)
     }
+}
+
+extension Color {
+    /// Platform-agnostic bridge, so views don't need their own #if.
+    init(platform: PlatformColor) {
+        #if canImport(AppKit)
+        self.init(nsColor: platform)
+        #else
+        self.init(uiColor: platform)
+        #endif
+    }
+
+    init(hex: String) { self.init(platform: PlatformColor(hex: hex)) }
 }
 
 enum Pal {

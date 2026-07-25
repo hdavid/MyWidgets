@@ -94,7 +94,7 @@ struct WindWidgetView: View {
 struct MyWidgetsBundle: WidgetBundle {
     var body: some Widget {
         MetricsWidget()
-        MoutiersForecastWidget()
+        ForecastWidget()
         WebcamWidget()
         ClaudeUsageWidget()
     }

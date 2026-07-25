@@ -102,8 +102,6 @@ struct MainWindowView: View {
         // Claude usage summary intentionally NOT in the window — the menu-bar
         // panel and the widget already show it.
         TabView {
-            WidgetsInfoView()
-                .tabItem { Label("Widgets", systemImage: "square.grid.2x2") }
             GrafanaSettingsView()
                 .tabItem { Label("Grafana", systemImage: "chart.xyaxis.line") }
             WindguruSettingsView()
@@ -112,7 +110,12 @@ struct MainWindowView: View {
                 .tabItem { Label("Webcams", systemImage: "video") }
             AccountSettingsView(model: model)
                 .tabItem { Label("Claude", systemImage: "person.2") }
+            ConfigSettingsView()
+                .tabItem { Label("Config", systemImage: "arrow.up.arrow.down.circle") }
         }
+        // Tabs are shorter than the window; without this a short tab's content
+        // floats in the vertical centre instead of sitting under the tab bar.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(12)
         .frame(width: 620, height: 620)
     }
@@ -166,34 +169,5 @@ struct PanelView: View {
         }
         .padding(14)
         .frame(width: 360)
-    }
-}
-
-// MARK: - Widgets info tab
-
-struct WidgetsInfoView: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Included widgets").font(.headline)
-            Text("""
-            • Live Wind — your Grafana metrics, self-updating (Grafana tab)
-            • Moutiers Forecast — windguru hourly wind/gust/direction (Windguru tab)
-            • Webcam 1–3 — latest frame, click to open the page (Webcams tab)
-            • Claude Usage — 5h / weekly / Fable quota per account (Claude tab)
-
-            Add them: right-click the desktop → Edit Widgets → “My Widgets”.
-
-            Wind, forecast and webcams fetch their own data. Claude usage is \
-            fetched by this app every 5 minutes (and by the widget itself when \
-            stale) — the app launches at login for that.
-            """)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            Button("Reload all widgets") {
-                WidgetCenter.shared.reloadAllTimelines()
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

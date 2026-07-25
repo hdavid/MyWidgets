@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Shared identifier for the App Group container the fetcher writes into.
 enum AppConstants {
-    static let appGroup = "JHV8UWZS57.group.systems.holonic.MyWidgets"
+    static let appGroup = BuildConfig.appGroup
     static let fileName = "usage.json"
 }
 
