@@ -16,6 +16,9 @@ struct GrafanaSettingsView: View {
     @State private var busy = false
     /// Last test's values, per source, so each slot can preview what it renders.
     @State private var probes: [String: WindSnapshot] = [:]
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    private var compact: Bool { sizeClass == .compact }
 
     var body: some View {
         ScrollView {
@@ -79,11 +82,11 @@ struct GrafanaSettingsView: View {
 
     private func connectionFields(_ source: Binding<GrafanaSource>) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            labelled("Grafana") {
+            LabeledField(title: "Grafana") {
                 TextField("https://host/grafana", text: source.baseURL)
                     .font(.system(.caption, design: .monospaced))
             }
-            labelled("Token") {
+            LabeledField(title: "Token") {
                 HStack(spacing: 6) {
                     SecureField("glsa_… (service-account token)", text: source.token)
                         .font(.system(.caption, design: .monospaced))
@@ -92,34 +95,23 @@ struct GrafanaSettingsView: View {
                     }
                 }
             }
-            labelled("Data source") {
+            LabeledField(title: "Data source") {
                 HStack(spacing: 12) {
                     TextField("1", value: source.datasourceId,
                               format: .number.grouping(.never))
-                        .frame(width: 50)
+                        .settingsWidth(50)
                     Text("Window").font(.caption).foregroundStyle(.secondary)
                     TextField("now-3h", text: source.window)
-                        .frame(width: 90)
+                        .settingsWidth(90)
                         .font(.system(.caption, design: .monospaced))
-                    Spacer()
+                    Spacer(minLength: 0)
                 }
             }
-            labelled("Dashboard") {
+            LabeledField(title: "Dashboard") {
                 TextField("URL opened when the widget is clicked",
                           text: source.dashboardURL)
                     .font(.system(.caption, design: .monospaced))
             }
-        }
-    }
-
-    private func labelled<C: View>(_ title: String,
-                                   @ViewBuilder _ content: () -> C) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 78, alignment: .leading)
-            content()
         }
     }
 
@@ -153,33 +145,28 @@ struct GrafanaSettingsView: View {
     private func slotCard(_ slot: Binding<MetricSlot>,
                           in source: Binding<GrafanaSource>) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
-                Toggle("", isOn: slot.enabled)
-                    .labelsHidden()
-                    .help("Include this metric")
-                Picker("", selection: slot.role) {
-                    ForEach(SlotRole.allCases) { Text($0.label).tag($0) }
+            if compact {
+                HStack(spacing: 6) {
+                    enableToggle(slot)
+                    rolePicker(slot)
+                    Spacer(minLength: 0)
+                    deleteButton(slot, in: source)
                 }
-                .labelsHidden()
-                .frame(width: 122)
-                TextField("Label", text: slot.label)
-                    .frame(width: 74)
-                TextField("Unit", text: slot.unit)
-                    .frame(width: 54)
-                Stepper(value: slot.decimals, in: 0...3) {
-                    Text("\(slot.decimals.wrappedValue)dp")
-                        .font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    TextField("Label", text: slot.label)
+                    TextField("Unit", text: slot.unit).settingsWidth(64)
+                    decimalStepper(slot)
                 }
-                .fixedSize()
-                Spacer(minLength: 0)
-                Button(role: .destructive) {
-                    let id = slot.id.wrappedValue
-                    source.slots.wrappedValue.removeAll { $0.id == id }
-                } label: {
-                    Image(systemName: "trash")
+            } else {
+                HStack(spacing: 6) {
+                    enableToggle(slot)
+                    rolePicker(slot)
+                    TextField("Label", text: slot.label).settingsWidth(74)
+                    TextField("Unit", text: slot.unit).settingsWidth(54)
+                    decimalStepper(slot)
+                    Spacer(minLength: 0)
+                    deleteButton(slot, in: source)
                 }
-                .buttonStyle(.borderless)
-                .disabled(source.slots.wrappedValue.count == 1)
             }
 
             HStack(spacing: 6) {
@@ -187,7 +174,7 @@ struct GrafanaSettingsView: View {
                     ForEach(MetricScale.allCases) { Text($0.label).tag($0) }
                 }
                 .labelsHidden()
-                .frame(width: 150)
+                .settingsWidth(150)
                 .disabled(slot.role.wrappedValue == .series)
                 preview(slot.wrappedValue, in: source.wrappedValue)
                 Spacer(minLength: 0)
@@ -208,6 +195,42 @@ struct GrafanaSettingsView: View {
         .background(Color.primary.opacity(slot.enabled.wrappedValue ? 0.05 : 0.02),
                     in: RoundedRectangle(cornerRadius: 6))
         .opacity(slot.enabled.wrappedValue ? 1 : 0.55)
+    }
+
+    private func enableToggle(_ slot: Binding<MetricSlot>) -> some View {
+        Toggle("", isOn: slot.enabled)
+            .labelsHidden()
+            .help("Include this metric")
+    }
+
+    private func rolePicker(_ slot: Binding<MetricSlot>) -> some View {
+        Picker("", selection: slot.role) {
+            ForEach(SlotRole.allCases) { Text($0.label).tag($0) }
+        }
+        .labelsHidden()
+        // Capped on a Mac so the row stays aligned; uncapped on a phone, where
+        // 122pt clips the longer role names ("Big number", "Rose (degrees)").
+        .settingsWidth(compact ? .infinity : 122)
+    }
+
+    private func decimalStepper(_ slot: Binding<MetricSlot>) -> some View {
+        Stepper(value: slot.decimals, in: 0...3) {
+            Text("\(slot.decimals.wrappedValue)dp")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .fixedSize()
+    }
+
+    private func deleteButton(_ slot: Binding<MetricSlot>,
+                              in source: Binding<GrafanaSource>) -> some View {
+        Button(role: .destructive) {
+            let id = slot.id.wrappedValue
+            source.slots.wrappedValue.removeAll { $0.id == id }
+        } label: {
+            Image(systemName: "trash")
+        }
+        .buttonStyle(.borderless)
+        .disabled(source.slots.wrappedValue.count == 1)
     }
 
     /// What the widget would print for this slot, using the last test's values.

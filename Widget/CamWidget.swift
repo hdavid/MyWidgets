@@ -107,7 +107,7 @@ struct CamView: View {
             }
             if entry.stale {
                 Text("· offline")
-                    .foregroundStyle(Color(nsColor: NSColor(hex: "#ff6b5e")))
+                    .foregroundStyle(Color(hex: "#ff6b5e"))
             }
         }
         .font(.system(size: 11))
@@ -147,8 +147,8 @@ struct CamView: View {
     /// when the frame is getting old.
     private func captionAgeColor(_ at: Date) -> Color {
         let ageMin = Date().timeIntervalSince(at) / 60
-        if ageMin > 30 { return Color(nsColor: NSColor(hex: "#ff6b5e")) }
-        if ageMin > 10 { return Color(nsColor: NSColor(hex: "#ffb340")) }
+        if ageMin > 30 { return Color(hex: "#ff6b5e") }
+        if ageMin > 10 { return Color(hex: "#ffb340") }
         return .white
     }
 }

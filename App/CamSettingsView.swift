@@ -39,7 +39,7 @@ struct CamSettingsView: View {
                                 Text("Refresh").font(.caption).foregroundStyle(.secondary)
                                 TextField("5", value: spec.refreshMinutes,
                                           format: .number.grouping(.never))
-                                    .frame(width: 44)
+                                    .settingsWidth(56)
                                 Text("min").font(.caption).foregroundStyle(.secondary)
                                 Spacer()
                             }

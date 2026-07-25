@@ -1,23 +1,32 @@
 # My Widgets
 
-macOS desktop widgets for live weather, forecasts, webcams and Claude Code usage.
-Each widget fetches its own data, so nothing has to be running for them to stay
-fresh (the one exception is Claude usage, which needs Keychain access and so is
-refreshed by the app).
+Widgets for macOS, iOS and iPadOS: live metrics from your own Grafana, windguru
+forecasts, webcam frames, and Claude Code usage. Each widget fetches its own
+data, so nothing has to be running for them to stay fresh (the one exception is
+Claude usage, which needs Keychain access and so is refreshed by the app).
 
 | Widget | What it shows | Configured in |
 |---|---|---|
 | **Live Metrics** | Any metrics from your own Grafana — wind rose, headline value, coloured chips, background sparkline | Grafana tab |
 | **Moutiers Forecast** | Windguru hourly wind / gust / direction / temperature, daylight hours, in a dense Windguru-style table | Windguru tab |
 | **Webcam** | Latest frame from a still-image URL, click to open the page | Webcams tab |
-| **Claude Usage** | 5 h / weekly / Fable quota per Claude Code account | Claude tab |
+| **Claude Usage** | 5 h / weekly / Fable quota per Claude Code account (macOS only) | Claude tab |
 
-Add them with: right-click the desktop → **Edit Widgets** → **My Widgets**.
+Add them with: right-click the desktop → **Edit Widgets** → **My Widgets**, or on
+iOS long-press the home screen → **+**.
 
-**Live Metrics** and **Webcam** are per-instance configurable: add as many copies
-as you like, then right-click each one → **Edit Widget** to choose which Grafana
-source or which webcam it shows. The pickers list whatever you've defined in the
-app, so a source added there is immediately offered to every placed widget.
+Claude Usage is macOS-only: it reads Claude Code's Keychain items by shelling out
+to `security`, which iOS has no equivalent for. Everything else is identical on
+both platforms.
+
+**Live Metrics**, **Windguru Forecast** and **Webcam** are per-instance
+configurable: add as many copies as you like, then right-click each one → **Edit
+Widget** to choose which source, spot or webcam it shows. The pickers list
+whatever you've defined in the app, so an entry added there is immediately
+offered to every placed widget.
+
+Every tab uses the same add/remove list: a card per entry with a delete button
+and a disclosure holding its details.
 
 ## Configuration
 
@@ -76,6 +85,14 @@ Edit settings in the app, then `save` to snapshot them; on a fresh install,
 `apply` to restore. The files are the same JSON the app writes into the App
 Group container.
 
+### Moving config between devices
+
+The App Group container is per-device, so the Mac and the phone don't share
+settings. The **Config** tab exports everything as one JSON file and imports it
+back — that's the route from Mac to iPhone. Grafana tokens are opt-in on export;
+importing a token-less file keeps whatever tokens the target device already has,
+so it can't silently wipe them.
+
 ## Building
 
 Requires Xcode and [xcodegen](https://github.com/yonaskolb/XcodeGen)
@@ -83,9 +100,25 @@ Requires Xcode and [xcodegen](https://github.com/yonaskolb/XcodeGen)
 is not committed.
 
 ```bash
-./install.sh                  # build Release, install to /Applications, restart widgets
-./scripts/build-release.sh    # build + package dist/MyWidgets-<version>.dmg
+./install.sh                  # macOS: build Release, install to /Applications, restart widgets
+./scripts/build-release.sh    # macOS: build + package dist/MyWidgets-<version>.dmg
 ```
+
+For iOS, open the generated project and run the **MyWidgetsPhone** scheme:
+
+```bash
+./scripts/configure.sh && open MyWidgets.xcodeproj
+```
+
+A device install needs a provisioning profile, so the iOS targets use automatic
+signing and Xcode manages it — there's no Developer ID path like on the Mac. The
+simulator needs nothing.
+
+Every build path starts with `scripts/configure.sh`, which resolves your build
+identity and generates the files that depend on it (`Shared/BuildConfig.generated.swift`,
+both platforms' `.entitlements`, and the Xcode project). Values come from the
+environment, then `local-config/build.env`, then the committed
+`build.env.example` placeholders — so a fresh clone builds without setup.
 
 `build-release.sh` works with no Apple credentials — it ad-hoc signs, which is
 fine for local testing but will make Gatekeeper complain on another Mac. Set
@@ -99,11 +132,14 @@ set -a; . ./.env.local; set +a     # see .env.local.example
 
 ### Forking
 
-Two identifiers are tied to the original developer account and need changing:
-`DEVELOPMENT_TEAM` in `project.yml`, and the App Group
-(`<TEAMID>.group.systems.holonic.MyWidgets`) in `App/App.entitlements` and
-`Widget/Widget.entitlements`. The group's team prefix must match the team the
-app is signed with, or the app and widget can't share their config.
+Copy `build.env.example` to `local-config/build.env` and set `BUNDLE_PREFIX`,
+`APP_NAME` and `DEVELOPMENT_TEAM` to yours. Nothing else needs editing —
+`configure.sh` derives the bundle ids and both App Groups from those three.
+
+Note the App Group naming differs by platform, and both forms are mandatory:
+macOS needs the Team ID prefix (`TEAMID.group.…`), iOS needs a `group.` prefix
+and no team. Getting it wrong fails at runtime with a nil container URL, not at
+build time.
 
 ## Releasing
 
@@ -134,13 +170,19 @@ runner has no UI session, so signing against the login keychain fails with
 ## Layout
 
 ```
-App/          the settings window and menu-bar panel (app target)
+App/          settings views (all platforms) + the macOS window and menu-bar panel
+iOS/          the iPhone/iPad app entry point and its asset catalog
 Widget/       widget definitions, timelines, views, configuration intents
-Shared/       models, config, palette — compiled into both targets
-scripts/      release build, CI secret setup, local config sync
-local-config/ this machine's real config (gitignored)
-project.yml   xcodegen project definition
+Shared/       models, config, palette, shared UI — compiled into every target
+scripts/      configure, release build, CI secrets, local config sync
+local-config/ this machine's real config and build identity (gitignored)
+project.yml   xcodegen project definition (4 targets: app + widget, ×2 platforms)
 ```
+
+The iOS targets reuse `App/` and exclude what can't work there — `MyWidgetsApp.swift`
+(MenuBarExtra, SMAppService, NSWorkspace), `AccountSettingsView.swift`,
+`SelfFetch.swift` (shells out to `security`) and `UsageWidget.swift`. See the
+comments in `project.yml`.
 
 Config that both targets read lives in `Shared/*Config.swift`, each backed by a
 JSON file in the App Group container: `grafana.json`, `webcams.json`,

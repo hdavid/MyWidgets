@@ -63,7 +63,7 @@ struct WindguruSettingsView: View {
                 Text("Spot ID").font(.caption).foregroundStyle(.secondary)
                 TextField("e.g. 67620", value: spot.spotId,
                           format: .number.grouping(.never))
-                    .frame(width: 90)
+                    .settingsWidth(90)
                 if configured {
                     Link("open", destination: Windguru.pageURL(spot: spot.spotId.wrappedValue))
                         .font(.caption)
@@ -84,7 +84,7 @@ struct WindguruSettingsView: View {
                     }
                 }
                 .labelsHidden()
-                .frame(width: 220)
+                .settingsWidth(220)
                 Spacer()
             }
         }

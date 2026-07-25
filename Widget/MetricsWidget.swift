@@ -88,18 +88,6 @@ struct WindWidgetView: View {
     }
 }
 
-// MARK: - Widget bundle
-
-@main
-struct MyWidgetsBundle: WidgetBundle {
-    var body: some Widget {
-        MetricsWidget()
-        ForecastWidget()
-        WebcamWidget()
-        ClaudeUsageWidget()
-    }
-}
-
 /// One kind, added as many times as you like — each copy picks its source.
 struct MetricsWidget: Widget {
     var body: some WidgetConfiguration {
