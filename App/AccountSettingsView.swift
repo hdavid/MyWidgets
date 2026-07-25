@@ -1,0 +1,68 @@
+import SwiftUI
+import WidgetKit
+
+/// Edit the Claude accounts the usage widget tracks. Stored in the shared
+/// App Group container so the widget's self-fetcher sees the same list.
+struct AccountSettingsView: View {
+    @ObservedObject var model: UsageAppModel
+    @State private var specs: [AccountSpec] = AccountsConfig.load()
+    @State private var saved = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Claude accounts").font(.headline)
+            Text("Each account is read from a Claude Code Keychain item. The default login uses “Claude Code-credentials”; extra accounts (CLAUDE_CONFIG_DIR setups) use a suffixed item name.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach($specs) { $spec in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        TextField("Label", text: $spec.label)
+                            .frame(width: 110)
+                        TextField("CLI command", text: $spec.cli)
+                            .frame(width: 90)
+                        Button(role: .destructive) {
+                            specs.removeAll { $0.id == spec.id }
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(specs.count == 1)
+                    }
+                    TextField("Keychain service (e.g. Claude Code-credentials)",
+                              text: $spec.keychainService)
+                        .font(.system(.caption, design: .monospaced))
+                }
+                .padding(8)
+                .background(Color.primary.opacity(0.04),
+                            in: RoundedRectangle(cornerRadius: 8))
+            }
+
+            HStack {
+                Button {
+                    specs.append(AccountSpec(label: "New account", cli: "claude",
+                                             keychainService: "Claude Code-credentials"))
+                } label: {
+                    Label("Add account", systemImage: "plus")
+                }
+                Spacer()
+                if saved {
+                    Text("Saved ✓").font(.caption).foregroundStyle(.green)
+                }
+                Button("Save & refresh") {
+                    AccountsConfig.save(specs)
+                    saved = true
+                    model.refresh(force: true)
+                    WidgetCenter.shared.reloadTimelines(ofKind: "ClaudeUsageWidget")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { saved = false }
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(14)
+        .textFieldStyle(.roundedBorder)
+        .onAppear { specs = AccountsConfig.load() }
+    }
+}

@@ -1,0 +1,313 @@
+import SwiftUI
+import WidgetKit
+
+/// Add, edit and remove Grafana sources. Each source is a connection plus one
+/// editable slot per thing drawn: the layout skeleton is fixed (rose + big value
+/// + secondary line, then rows of three chips) and a slot's role says where it
+/// lands.
+///
+/// A placed Live Metrics widget remembers which source it shows in its own
+/// configuration intent (right-click → Edit Widget). Tokens are stored in the
+/// shared App Group container, never in source.
+struct GrafanaSettingsView: View {
+    @State private var sources: [GrafanaSource] = GrafanaConfig.load()
+    @State private var selectedID: String = ""
+    @State private var status: String?
+    @State private var statusColor: Color = .secondary
+    @State private var busy = false
+    @State private var probe: WindSnapshot?
+
+    private var index: Int? { sources.firstIndex { $0.id == selectedID } }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Grafana live metrics").font(.headline)
+                Text("Each slot is one raw InfluxQL query sent to Grafana’s /api/ds/query. The role decides where it is drawn; the scale decides how it is coloured. Chips fill rows of three in the order listed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                sourcePicker
+
+                if let i = index {
+                    connectionSection(i)
+                    Divider()
+                    slotsSection(i)
+                } else {
+                    Text("No sources — add one above.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 8) {
+                    if busy { ProgressView().controlSize(.small) }
+                    if let status {
+                        Text(status).font(.caption).foregroundStyle(statusColor)
+                            .lineLimit(4).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Button("Save & test") { Task { await saveAndTest() } }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(busy || index == nil)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .textFieldStyle(.roundedBorder)
+        .onAppear {
+            sources = GrafanaConfig.load()
+            if index == nil { selectedID = sources.first?.id ?? "" }
+        }
+    }
+
+    // MARK: Source list
+
+    private var sourcePicker: some View {
+        HStack(spacing: 8) {
+            Picker("", selection: $selectedID) {
+                ForEach(sources) { Text($0.title.isEmpty ? "Untitled" : $0.title).tag($0.id) }
+            }
+            .labelsHidden()
+            .frame(width: 200)
+
+            Button {
+                let new = GrafanaSource(title: "New source")
+                sources.append(new)
+                selectedID = new.id
+                probe = nil
+            } label: {
+                Label("Add", systemImage: "plus")
+            }
+
+            // Duplicating is the quick path to a second station: same slot
+            // shapes, different host or measurement names.
+            Button {
+                guard let i = index else { return }
+                var copy = sources[i]
+                copy.id = UUID().uuidString
+                copy.title += " copy"
+                copy.slots = copy.slots.map { slot in
+                    var s = slot
+                    s.id = UUID().uuidString
+                    return s
+                }
+                sources.insert(copy, at: i + 1)
+                selectedID = copy.id
+                probe = nil
+            } label: {
+                Label("Duplicate", systemImage: "plus.square.on.square")
+            }
+            .disabled(index == nil)
+
+            Spacer()
+
+            Button(role: .destructive) {
+                guard let i = index else { return }
+                sources.remove(at: i)
+                selectedID = sources.first?.id ?? ""
+                probe = nil
+            } label: {
+                Label("Remove", systemImage: "trash")
+            }
+            .disabled(sources.count <= 1)
+        }
+    }
+
+    // MARK: Connection
+
+    private func connectionSection(_ i: Int) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            labelled("Title") {
+                TextField("Widget heading", text: $sources[i].title)
+            }
+            labelled("Grafana") {
+                TextField("https://host/grafana", text: $sources[i].baseURL)
+                    .font(.system(.caption, design: .monospaced))
+            }
+            labelled("Token") {
+                HStack(spacing: 6) {
+                    SecureField("glsa_… (service-account token)", text: $sources[i].token)
+                        .font(.system(.caption, design: .monospaced))
+                    if sources[i].token.isEmpty {
+                        Text("required").font(.caption2).foregroundStyle(.orange)
+                    }
+                }
+            }
+            labelled("Data source") {
+                HStack(spacing: 12) {
+                    TextField("1", value: $sources[i].datasourceId,
+                              format: .number.grouping(.never))
+                        .frame(width: 50)
+                    Text("Window").font(.caption).foregroundStyle(.secondary)
+                    TextField("now-3h", text: $sources[i].window)
+                        .frame(width: 90)
+                        .font(.system(.caption, design: .monospaced))
+                    Spacer()
+                }
+            }
+            labelled("Dashboard") {
+                TextField("URL opened when the widget is clicked",
+                          text: $sources[i].dashboardURL)
+                    .font(.system(.caption, design: .monospaced))
+            }
+        }
+    }
+
+    private func labelled<C: View>(_ title: String,
+                                   @ViewBuilder _ content: () -> C) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 78, alignment: .leading)
+            content()
+        }
+    }
+
+    // MARK: Slots
+
+    private func slotsSection(_ i: Int) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Slots").font(.system(size: 12, weight: .semibold))
+                Spacer()
+                Button {
+                    sources[i].slots.append(
+                        MetricSlot(role: .chip, query: "SELECT last(value) FROM autogen."))
+                } label: {
+                    Label("Add chip", systemImage: "plus")
+                }
+                .buttonStyle(.borderless)
+            }
+
+            ForEach($sources[i].slots) { $slot in
+                slotCard($slot, in: i)
+            }
+
+            Text("Roles other than Chip fill a single place in the layout — if two slots share one, the first enabled slot wins. “Dew spread” colours by how close the value is to the Temperature-scaled slot.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func slotCard(_ slot: Binding<MetricSlot>, in i: Int) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Toggle("", isOn: slot.enabled)
+                    .labelsHidden()
+                    .help("Include this metric")
+                Picker("", selection: slot.role) {
+                    ForEach(SlotRole.allCases) { Text($0.label).tag($0) }
+                }
+                .labelsHidden()
+                .frame(width: 122)
+                TextField("Label", text: slot.label)
+                    .frame(width: 74)
+                TextField("Unit", text: slot.unit)
+                    .frame(width: 54)
+                Stepper(value: slot.decimals, in: 0...3) {
+                    Text("\(slot.decimals.wrappedValue)dp")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .fixedSize()
+                Spacer(minLength: 0)
+                Button(role: .destructive) {
+                    let id = slot.id.wrappedValue
+                    sources[i].slots.removeAll { $0.id == id }
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .disabled(sources[i].slots.count == 1)
+            }
+
+            HStack(spacing: 6) {
+                Picker("", selection: slot.scale) {
+                    ForEach(MetricScale.allCases) { Text($0.label).tag($0) }
+                }
+                .labelsHidden()
+                .frame(width: 150)
+                .disabled(slot.role.wrappedValue == .series)
+                preview(slot.wrappedValue, in: i)
+                Spacer(minLength: 0)
+            }
+
+            TextField("SELECT last(value) FROM autogen.measurement", text: slot.query,
+                      axis: .vertical)
+                .font(.system(.caption, design: .monospaced))
+                .lineLimit(1...3)
+
+            if slot.role.wrappedValue != .series {
+                TextField("Trend query — optional, adds a tendency arrow",
+                          text: slot.trendQuery)
+                    .font(.system(.caption, design: .monospaced))
+            }
+        }
+        .padding(8)
+        .background(Color.primary.opacity(slot.enabled.wrappedValue ? 0.04 : 0.015),
+                    in: RoundedRectangle(cornerRadius: 8))
+        .opacity(slot.enabled.wrappedValue ? 1 : 0.55)
+    }
+
+    /// What the widget would print for this slot, using the last test's values.
+    @ViewBuilder
+    private func preview(_ slot: MetricSlot, in i: Int) -> some View {
+        if slot.role == .series {
+            Text(probe.map { "\($0.series.count) points" } ?? "sparkline")
+                .font(.caption).foregroundStyle(.secondary)
+        } else {
+            let v = probe?.values[slot.id]
+            let ref = probe.flatMap { p in
+                sources[i].slots.first { $0.scale == .temperature }
+                    .flatMap { p.values[$0.id] }
+            }
+            Text(slot.text(v, trend: probe?.trends[slot.id]))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(slot.scale.color(v, reference: ref))
+        }
+    }
+
+    // MARK: Save & test
+
+    private func saveAndTest() async {
+        busy = true
+        defer { busy = false }
+        status = nil
+
+        guard GrafanaConfig.save(sources) else {
+            status = "Could not write the config file."
+            statusColor = .red
+            return
+        }
+        WidgetCenter.shared.reloadTimelines(ofKind: "LiveMetrics")
+
+        guard let i = index else { return }
+        let source = sources[i]
+        guard source.isConfigured else {
+            status = "Saved, but a Grafana URL and token are both needed to fetch."
+            statusColor = .orange
+            return
+        }
+        guard let snap = await Grafana.fetchAll(source) else {
+            status = "Saved, but Grafana returned nothing — check the URL, token and data source id."
+            statusColor = .orange
+            return
+        }
+        probe = snap
+
+        let wanted = source.slots.filter { $0.enabled && !$0.query.isEmpty }
+        let missing = wanted.filter { s in
+            s.role == .series ? snap.series.isEmpty : snap.values[s.id] == nil
+        }
+        if missing.isEmpty {
+            status = "Saved ✓ — all \(wanted.count) slots of “\(source.title)” returned data."
+            statusColor = .green
+        } else {
+            let names = missing.map { $0.label.isEmpty ? $0.role.label : $0.label }
+            status = "Saved ✓ — no data for: \(names.joined(separator: ", "))."
+            statusColor = .orange
+        }
+    }
+}

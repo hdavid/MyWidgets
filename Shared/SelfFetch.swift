@@ -1,0 +1,139 @@
+import Foundation
+
+/// Claude usage fetcher — the "weather widget" pattern: reads tokens from the
+/// Claude Code CLI's Keychain items (via /usr/bin/security, which the user
+/// has Always-Allowed) and queries the OAuth usage endpoint. Used by both the
+/// app (5-min timer) and the widget (self-fetch when the snapshot is stale).
+///
+/// Accounts are configurable — see AccountsConfig.
+enum SelfFetch {
+
+    // MARK: - Raw API response (subset we need)
+
+    struct RawUsage: Decodable {
+        struct Window: Decodable { var utilization: Double?; var resets_at: String? }
+        struct Scope: Decodable { var model: Model? }
+        struct Model: Decodable { var display_name: String? }
+        struct Limit: Decodable {
+            var kind: String?
+            var percent: Double?
+            var severity: String?
+            var resets_at: String?
+            var is_active: Bool?
+            var scope: Scope?
+        }
+        var five_hour: Window?
+        var seven_day: Window?
+        var limits: [Limit]?
+    }
+
+    // MARK: - Keychain via /usr/bin/security
+
+    static func token(for service: String) -> String? {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        p.arguments = ["find-generic-password", "-s", service, "-w"]
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = Pipe()
+        guard (try? p.run()) != nil else { return nil }
+        p.waitUntilExit()
+        guard p.terminationStatus == 0 else { return nil }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        guard
+            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let oauth = obj["claudeAiOauth"] as? [String: Any],
+            let tok = oauth["accessToken"] as? String, !tok.isEmpty
+        else { return nil }
+        return tok
+    }
+
+    // MARK: - Usage endpoint
+
+    static func usage(token: String) -> (Int, RawUsage?) {
+        var req = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+        req.timeoutInterval = 15
+
+        let sem = DispatchSemaphore(value: 0)
+        var status = 0
+        var raw: RawUsage?
+        URLSession.shared.dataTask(with: req) { data, resp, _ in
+            status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            if status == 200, let data { raw = try? JSONDecoder().decode(RawUsage.self, from: data) }
+            sem.signal()
+        }.resume()
+        _ = sem.wait(timeout: .now() + 20)
+        return (status, raw)
+    }
+
+    // MARK: - Distill
+
+    static func distill(_ u: RawUsage) -> (QuotaGauge, QuotaGauge, QuotaGauge, String?) {
+        let limits = u.limits ?? []
+        func gauge(_ l: RawUsage.Limit?, fallback: RawUsage.Window?) -> QuotaGauge {
+            if let l {
+                return QuotaGauge(percent: l.percent.map { Int($0.rounded()) },
+                                  severity: l.severity ?? "normal",
+                                  resetsAt: l.resets_at)
+            }
+            return QuotaGauge(percent: fallback?.utilization.map { Int($0.rounded()) },
+                              severity: "normal", resetsAt: fallback?.resets_at)
+        }
+        let five = gauge(limits.first { $0.kind == "session" }, fallback: u.five_hour)
+        let week = gauge(limits.first { $0.kind == "weekly_all" }, fallback: u.seven_day)
+        let fable = limits.first { $0.kind == "weekly_scoped" && $0.scope?.model?.display_name == "Fable" }
+            .map { gauge($0, fallback: nil) }
+            ?? QuotaGauge(percent: nil, severity: "normal", resetsAt: nil)
+        let active = limits.first { $0.is_active == true }?.kind
+        return (five, week, fable, active)
+    }
+
+    // MARK: - Full refresh
+
+    /// Fetch all configured accounts, carrying identity labels over from
+    /// `previous`. Returns nil only if nothing could be fetched at all.
+    static func refresh(previous: Snapshot?) -> Snapshot? {
+        var accounts: [Account] = []
+        var anySuccess = false
+
+        for spec in AccountsConfig.load() {
+            let old = previous?.accounts.first { $0.id == spec.id }
+            var acc = Account(
+                id: spec.id, cli: spec.cli, loggedIn: false,
+                email: old?.email, org: old?.org, plan: old?.plan, label: spec.label,
+                error: nil,
+                fiveHour: QuotaGauge(percent: nil, severity: "normal", resetsAt: nil),
+                week: QuotaGauge(percent: nil, severity: "normal", resetsAt: nil),
+                fable: QuotaGauge(percent: nil, severity: "normal", resetsAt: nil),
+                activeKind: nil)
+
+            guard let tok = token(for: spec.keychainService) else {
+                acc.error = old?.error == nil && old != nil ? "session_expired" : "logged_out"
+                accounts.append(acc)
+                continue
+            }
+            let (status, raw) = usage(token: tok)
+            switch (status, raw) {
+            case (200, .some(let u)):
+                let (five, week, fable, active) = distill(u)
+                acc.loggedIn = true
+                acc.fiveHour = five; acc.week = week; acc.fable = fable
+                acc.activeKind = active
+                anySuccess = true
+            case (401, _):
+                acc.error = "session_expired"
+            default:
+                // Transient (429/5xx/network): keep the old row wholesale.
+                if let old { accounts.append(old); continue }
+                acc.error = "http_\(status)"
+            }
+            accounts.append(acc)
+        }
+
+        guard anySuccess || previous == nil else { return nil }
+        return Snapshot(generatedAt: ISO8601.plain.string(from: Date()),
+                        accounts: accounts, source: "widget")
+    }
+}

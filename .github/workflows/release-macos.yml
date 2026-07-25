@@ -1,0 +1,76 @@
+name: Build & Notarize (macOS)
+
+# Builds the signed + notarized .app/.dmg and attaches them to a Release.
+#   - push a tag like v2.1.0 → release build, artifacts attached to the release
+#   - or trigger manually from the Actions tab (artifacts only, no release)
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write        # needed to create the release and upload assets
+
+concurrency:
+  group: release-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60   # the build is minutes; notarization is the slow part
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      # ── Import the Developer ID Application cert into a temp keychain ───────
+      # The cert + private key live in MACOS_CERTIFICATE_P12 (base64 of a .p12).
+      # A throwaway keychain is used rather than the login keychain: the runner
+      # has no UI session, so signing against the login keychain fails with
+      # errSecInternalComponent (it cannot show the authorization dialog). The
+      # temp keychain is password-authorized via set-key-partition-list, so
+      # codesign runs fully headless.
+      - name: Import signing certificate
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+        run: |
+          set -euo pipefail
+          CERT="$RUNNER_TEMP/cert.p12"
+          KEYCHAIN="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "$MACOS_CERTIFICATE_P12" | base64 --decode > "$CERT"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT" -P "$MACOS_CERTIFICATE_PWD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN" login.keychain-db
+          rm -f "$CERT"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      - name: Build, sign, notarize & package
+        env:
+          DEVELOPER_ID_APP: ${{ secrets.DEVELOPER_ID_APP }}
+          DEVELOPMENT_TEAM: ${{ secrets.NOTARY_TEAM_ID }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: bash scripts/build-release.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyWidgets-macos
+          path: dist/*.dmg
+          if-no-files-found: error
+
+      # On a tag push, publish a release with the .dmg attached.
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.dmg
+          generate_release_notes: true
