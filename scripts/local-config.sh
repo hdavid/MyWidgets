@@ -43,9 +43,12 @@ apply)
             echo "→ $f"
         fi
     done
-    # Widgets cache the last good values; nudge them to re-read the new config.
-    killall chronod 2>/dev/null || true
-    echo "Applied. Widgets will pick it up on their next refresh."
+    # Deliberately not restarting the widget host: config is read on every
+    # timeline refresh, so the widgets pick this up within minutes on their own.
+    # Restarting chronod here would spend launchd's throttling budget for no
+    # reason (see the note in install.sh).
+    echo "Applied. Widgets will pick it up on their next refresh (≤5 min),"
+    echo "or immediately via the app's Config tab → Reload all widgets."
     ;;
 save)
     mkdir -p "$LOCAL"

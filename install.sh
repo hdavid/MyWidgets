@@ -41,7 +41,18 @@ echo "==> Registering with Launch Services and starting"
 LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 "$LSR" -f "$APP_DST"
 
-# Force WidgetKit to reload the (new) extension code for already-placed widgets.
+# Force WidgetKit to pick up the new extension binary for already-placed widgets
+# (a timeline reload re-runs the old code; only restarting the host reloads it).
+#
+# `killall`, not `launchctl kickstart -k` — SIP refuses to kickstart
+# com.apple.chronod ("Operation not permitted while System Integrity Protection
+# is engaged"), so a plain SIGTERM is the only thing that works here.
+#
+# Note this spends launchd's exponential-throttling budget for chronod. One
+# install is fine; a tight rebuild loop is not — after a handful of restarts in
+# quick succession launchd backs off, and placed widgets go blank or stop
+# updating until it relents. If that happens, wait a minute rather than killing
+# it again.
 killall chronod 2>/dev/null || true
 open "$APP_DST"
 

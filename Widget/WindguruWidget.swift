@@ -131,6 +131,9 @@ private struct ForecastLine: View {
 
     /// Alternating header tint, keyed to the absolute day so it stays stable
     /// across lines and across month boundaries.
+    ///
+    /// Cheap enough measured (56 calls ≈ 0.002 ms), but there is no reason to
+    /// repeat it per cell when a line spans at most two days.
     private func bandTint(_ i: Int) -> Color {
         let day = cal.ordinality(of: .day, in: .era, for: points[i].time) ?? 0
         return wgBandTints[day % 2]
@@ -144,7 +147,6 @@ private struct ForecastLine: View {
                     .font(.system(size: m.labelSize, weight: .semibold))
                     .foregroundStyle(startsNewDay(i) ? Pal.blue : .primary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
                     .frame(maxWidth: .infinity,
                            minHeight: m.labelSize + 2, maxHeight: m.labelSize + 2)
                     .background(bandTint(i), in: RoundedRectangle(cornerRadius: m.corner))
@@ -175,11 +177,10 @@ private struct ForecastLine: View {
     /// One table row: `columns` equal-width slots (blank past the data's end).
     private func row<Content: View>(@ViewBuilder _ content: @escaping (Int) -> Content) -> some View {
         HStack(spacing: m.gap) {
-            ForEach(0..<columns, id: \.self) { i in
-                Group {
-                    if i < points.count { content(i) } else { Color.clear }
-                }
-                .frame(maxWidth: .infinity)
+            // Only the columns that have data — a short final line simply ends,
+            // rather than padding with placeholder views the host must lay out.
+            ForEach(0..<min(columns, points.count), id: \.self) { i in
+                content(i).frame(maxWidth: .infinity)
             }
         }
     }
@@ -189,9 +190,13 @@ private struct ForecastLine: View {
             .font(.system(size: m.valueSize, weight: bold ? .bold : .regular))
             .foregroundStyle(.black)
             .lineLimit(1)
-            .minimumScaleFactor(0.65)
-            // Fixed, not minimum: windguru's cells are tighter than a text
-            // line's natural height, and digits have no descenders to clip.
+            // No minimumScaleFactor: it makes SwiftUI lay each Text out at
+            // several font sizes, and this table has hundreds of cells that the
+            // widget HOST process has to lay out. The values are two or three
+            // characters in a cell sized for them, so it never bought anything.
+            //
+            // Fixed height, not minimum: windguru's cells are tighter than a
+            // text line's natural height, and digits have no descenders to clip.
             .frame(maxWidth: .infinity,
                    minHeight: m.cellHeight, maxHeight: m.cellHeight)
             .background(bg, in: RoundedRectangle(cornerRadius: m.corner))
@@ -296,7 +301,7 @@ struct ForecastWidgetView: View {
                                  headerSize: 11, lineGap: 4)
                 case .systemLarge, .systemExtraLarge:
                     ForecastGrid(title: spot.heading, forecast: f, stale: entry.stale,
-                                 columns: 14, lines: 4,
+                                 columns: 14, lines: 3,
                                  m: .init(labelSize: 10, valueSize: 12, cellHeight: 14,
                                           arrowSize: 10),
                                  headerSize: 13, lineGap: 5)
