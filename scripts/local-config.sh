@@ -14,7 +14,17 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOCAL="$ROOT/local-config"
-GROUP="JHV8UWZS57.group.systems.holonic.MyWidgets"
+# Derived the same way configure.sh does, so the container path follows your
+# build identity instead of being hardcoded.
+val() { grep "^$1=" "$ROOT/local-config/build.env" 2>/dev/null | head -1 | cut -d= -f2- \
+        || true; }
+BUNDLE_PREFIX="${BUNDLE_PREFIX:-$(val BUNDLE_PREFIX)}"
+APP_NAME="${APP_NAME:-$(val APP_NAME)}"
+DEVELOPMENT_TEAM="${DEVELOPMENT_TEAM:-$(val DEVELOPMENT_TEAM)}"
+: "${BUNDLE_PREFIX:?set it in local-config/build.env}"
+: "${APP_NAME:?set it in local-config/build.env}"
+: "${DEVELOPMENT_TEAM:?set it in local-config/build.env}"
+GROUP="${APP_GROUP:-$DEVELOPMENT_TEAM.group.$BUNDLE_PREFIX.$APP_NAME}"
 CONTAINER="$HOME/Library/Group Containers/$GROUP"
 
 # accounts.json is not listed: it holds Keychain item names per Claude account

@@ -8,7 +8,7 @@ Claude usage, which needs Keychain access and so is refreshed by the app).
 | Widget | What it shows | Configured in |
 |---|---|---|
 | **Live Metrics** | Any metrics from your own Grafana — wind rose, headline value, coloured chips, background sparkline | Grafana tab |
-| **Moutiers Forecast** | Windguru hourly wind / gust / direction / temperature, daylight hours, in a dense Windguru-style table | Windguru tab |
+| **Windguru Forecast** | Hourly wind / gust / direction / temperature, daylight hours, in a dense Windguru-style table | Windguru tab |
 | **Webcam** | Latest frame from a still-image URL, click to open the page | Webcams tab |
 | **Claude Usage** | 5 h / weekly / Fable quota per Claude Code account (macOS only) | Claude tab |
 

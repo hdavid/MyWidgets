@@ -61,7 +61,7 @@ struct WindguruSettingsView: View {
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("Spot ID").font(.caption).foregroundStyle(.secondary)
-                TextField("e.g. 67620", value: spot.spotId,
+                TextField("from the windguru.cz URL", value: spot.spotId,
                           format: .number.grouping(.never))
                     .settingsWidth(90)
                 if configured {
