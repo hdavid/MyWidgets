@@ -226,20 +226,28 @@ struct SecondaryLine: View {
     var size: CGFloat
     var weight: Font.Weight = .semibold
 
+    /// One concatenated Text rather than an HStack of Texts.
+    ///
+    /// This line shares the middle column with the big value, and on the medium
+    /// layout the chip rows next to it are `.fixedSize()` — they claim their
+    /// intrinsic width, so the column gets squeezed. A squeezed HStack truncates
+    /// its children individually ("Gust 5.6 · max 7.8" → "Gust… · max…"), while a
+    /// single Text scales as a unit under minimumScaleFactor. Per-part colour
+    /// survives concatenation, which is why this doesn't cost anything.
+    private var line: Text? {
+        r.secondaryLine.reduce(nil) { acc, item in
+            let piece = Text(item.text).foregroundColor(r.color(item.role))
+            guard let acc else { return piece }
+            return acc + Text(" · ").foregroundColor(Pal.gray) + piece
+        }
+    }
+
     var body: some View {
-        let items = r.secondaryLine
-        if !items.isEmpty {
-            HStack(spacing: 4) {
-                ForEach(Array(items.enumerated()), id: \.offset) { i, item in
-                    if i > 0 {
-                        Text("·").foregroundStyle(Pal.gray)
-                    }
-                    Text(item.text).foregroundStyle(r.color(item.role))
-                }
-            }
-            .font(.system(size: size, weight: weight))
-            .lineLimit(1)
-            .minimumScaleFactor(0.7)
+        if let line {
+            line
+                .font(.system(size: size, weight: weight))
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
         }
     }
 }

@@ -6,6 +6,9 @@ import ServiceManagement
 import UIKit
 #endif
 
+/// Tab identities, so opening a config file can bring the Config tab forward.
+enum SettingsTab: Hashable { case grafana, windguru, webcams, claude, config }
+
 /// One app for macOS, iOS and iPadOS. The settings tabs are shared; what differs
 /// is the shell around them (a resizable window plus a menu-bar panel on the Mac,
 /// a plain scene on the phone) and Claude usage, which only a Mac can read.
@@ -14,13 +17,14 @@ struct MyWidgetsApp: App {
     #if os(macOS)
     @StateObject private var model = UsageAppModel()
     #endif
+    @State private var selectedTab: SettingsTab = .grafana
 
     var body: some Scene {
         #if os(macOS)
         // A real window (Dock icon, double-clickable) …
         Window("My Widgets", id: "main") {
-            MainWindowView(model: model)
-                .onOpenURL(perform: openExternally)
+            MainWindowView(model: model, selection: $selectedTab)
+                .onOpenURL(perform: handle)
         }
         .windowResizability(.contentSize)
 
@@ -38,14 +42,21 @@ struct MyWidgetsApp: App {
         .menuBarExtraStyle(.window)
         #else
         WindowGroup {
-            MainWindowView()
-                .onOpenURL(perform: openExternally)
+            MainWindowView(selection: $selectedTab)
+                .onOpenURL(perform: handle)
         }
         #endif
     }
 
-    /// Widget clicks land in the app — hand web URLs straight to the browser.
-    private func openExternally(_ url: URL) {
+    /// Two kinds of URL arrive here: a widget click, which carries the web link
+    /// that widget was configured with, and a config file the system routed to us
+    /// because we own the .mywidgets type.
+    private func handle(_ url: URL) {
+        if OpenedConfig.isConfigFile(url) {
+            OpenedConfig.shared.import(url)
+            selectedTab = .config
+            return
+        }
         guard url.scheme == "https" || url.scheme == "http" else { return }
         #if os(macOS)
         NSWorkspace.shared.open(url)
@@ -61,22 +72,28 @@ struct MainWindowView: View {
     #if os(macOS)
     @ObservedObject var model: UsageAppModel
     #endif
+    @Binding var selection: SettingsTab
 
     var body: some View {
         // Claude usage summary intentionally NOT in the window — the menu-bar
         // panel and the widget already show it.
         #if os(macOS)
-        TabView {
+        TabView(selection: $selection) {
             GrafanaSettingsView()
                 .tabItem { Label("Grafana", systemImage: "chart.xyaxis.line") }
+                .tag(SettingsTab.grafana)
             WindguruSettingsView()
                 .tabItem { Label("Windguru", systemImage: "wind") }
+                .tag(SettingsTab.windguru)
             CamSettingsView()
                 .tabItem { Label("Webcams", systemImage: "video") }
+                .tag(SettingsTab.webcams)
             AccountSettingsView(model: model)
                 .tabItem { Label("Claude", systemImage: "person.2") }
+                .tag(SettingsTab.claude)
             ConfigSettingsView()
                 .tabItem { Label("Config", systemImage: "arrow.up.arrow.down.circle") }
+                .tag(SettingsTab.config)
         }
         // Tabs are shorter than the window; without this a short tab's content
         // floats in the vertical centre instead of sitting under the tab bar.
@@ -84,11 +101,11 @@ struct MainWindowView: View {
         .padding(12)
         .frame(width: 620, height: 620)
         #else
-        TabView {
-            phoneTab(GrafanaSettingsView(), "Grafana", "chart.xyaxis.line")
-            phoneTab(WindguruSettingsView(), "Windguru", "wind")
-            phoneTab(CamSettingsView(), "Webcams", "video")
-            phoneTab(ConfigSettingsView(), "Config", "arrow.up.arrow.down.circle")
+        TabView(selection: $selection) {
+            phoneTab(GrafanaSettingsView(), "Grafana", "chart.xyaxis.line", .grafana)
+            phoneTab(WindguruSettingsView(), "Windguru", "wind", .windguru)
+            phoneTab(CamSettingsView(), "Webcams", "video", .webcams)
+            phoneTab(ConfigSettingsView(), "Config", "arrow.up.arrow.down.circle", .config)
         }
         #endif
     }
@@ -96,13 +113,15 @@ struct MainWindowView: View {
     #if !os(macOS)
     /// Each tab gets its own navigation stack so the title stays put while the
     /// form scrolls, and so an iPad lays them out sensibly.
-    private func phoneTab<V: View>(_ view: V, _ title: String, _ icon: String) -> some View {
+    private func phoneTab<V: View>(_ view: V, _ title: String, _ icon: String,
+                                   _ tag: SettingsTab) -> some View {
         NavigationStack {
             view
                 .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
         }
         .tabItem { Label(title, systemImage: icon) }
+        .tag(tag)
     }
     #endif
 }

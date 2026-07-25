@@ -2,10 +2,20 @@ import SwiftUI
 import WidgetKit
 import UniformTypeIdentifiers
 
+extension UTType {
+    /// The app's own config type, declared in Info.plist so a shared file opens
+    /// here rather than in a text editor. It conforms to public.json, so the
+    /// contents are still plain JSON anyone can read.
+    static let widgetConfig = UTType(exportedAs: BuildConfig.configUTI)
+}
+
 /// A JSON config export. `FileDocument` rather than a save panel so the same
 /// code drives the macOS file dialog and the iOS document picker / share sheet.
 struct ConfigDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.json] }
+    // Reads our own type and plain .json, so a file that lost its extension
+    // still imports; writes our type, so exports are owned by this app.
+    static var readableContentTypes: [UTType] { [.widgetConfig, .json] }
+    static var writableContentTypes: [UTType] { [.widgetConfig] }
 
     var data: Data
 
@@ -29,6 +39,7 @@ struct ConfigSettingsView: View {
     @State private var document = ConfigDocument(data: Data())
     @State private var status: String?
     @State private var statusColor: Color = .secondary
+    @ObservedObject private var opened = OpenedConfig.shared
 
     private var current: ConfigBundle { ConfigBundle.current(includeTokens: includeTokens) }
 
@@ -36,7 +47,7 @@ struct ConfigSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Import / export").font(.headline)
-                Text("One JSON file holding every Grafana source, windguru spot, webcam and Claude account. Use it to move a setup to another machine, or to the iPhone app — which reads the same format.")
+                Text("One file holding every Grafana source, windguru spot, webcam and Claude account. Use it to move a setup to another machine, or to the iPhone app — which reads the same format. Exports get a .mywidgets extension and are owned by this app, so opening one anywhere imports it here; inside, it's plain JSON.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -80,6 +91,12 @@ struct ConfigSettingsView: View {
                     Label("Reload all widgets", systemImage: "arrow.clockwise")
                 }
 
+                if let message = opened.message {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(opened.failed ? .red : .green)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if let status {
                     Text(status).font(.caption).foregroundStyle(statusColor)
                         .fixedSize(horizontal: false, vertical: true)
@@ -89,7 +106,7 @@ struct ConfigSettingsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .fileExporter(isPresented: $exporting, document: document,
-                      contentType: .json,
+                      contentType: .widgetConfig,
                       defaultFilename: "MyWidgets-config") { result in
             switch result {
             case .success:
@@ -101,7 +118,7 @@ struct ConfigSettingsView: View {
             }
         }
         .fileImporter(isPresented: $importing,
-                      allowedContentTypes: [.json]) { result in
+                      allowedContentTypes: [.widgetConfig, .json]) { result in
             switch result {
             case .success(let url): importFile(url)
             case .failure(let error):

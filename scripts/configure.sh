@@ -52,6 +52,11 @@ enum BuildConfig {
     #else
     static let appGroup = "$APP_GROUP_IOS"
     #endif
+
+    /// UTI for exported config files. Must match the UTExportedTypeDeclarations
+    /// entry in the app's Info.plist, or UTType(exportedAs:) traps at runtime.
+    static let configUTI = "$BUNDLE_ID.config"
+    static let configFileExtension = "mywidgets"
 }
 SWIFT
 
