@@ -87,7 +87,39 @@ struct WindguruSettingsView: View {
                 .settingsWidth(220)
                 Spacer()
             }
+            tideFields(spot)
         }
+    }
+
+    /// Optional, and only meaningful on a coastal spot: what the tide row needs
+    /// to speak in the same numbers as a printed tide table.
+    private func tideFields(_ spot: Binding<WindguruSpot>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Tide table offset").font(.caption).foregroundStyle(.secondary)
+                TextField("m", value: spot.tideOffset, format: .number.precision(.fractionLength(0...2)))
+                    .settingsWidth(70)
+                Text("m").font(.caption2).foregroundStyle(.secondary)
+                Text("Green above").font(.caption).foregroundStyle(.secondary)
+                TextField("m", value: spot.tideGreenAbove,
+                          format: .number.precision(.fractionLength(0...2)))
+                    .settingsWidth(70)
+                Text("m").font(.caption2).foregroundStyle(.secondary)
+                Spacer()
+            }
+            Text(tideHelp(spot.wrappedValue))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Says what the two numbers currently mean, so the calibration can be
+    /// checked without leaving the tab.
+    private func tideHelp(_ spot: WindguruSpot) -> String {
+        let base = "Windguru's tide is metres from mean sea level; tide tables use a local zero. At any high or low water, subtract windguru's height from your table's to get the offset. Leave both empty for a plain blue tide row."
+        guard let msl = spot.greenAboveMSL else { return base }
+        return base + String(format: " Now: green above %+.2f m from mean sea level.", msl / 100)
     }
 
     /// Ask the spot which models it offers and rebuild its picker (highest

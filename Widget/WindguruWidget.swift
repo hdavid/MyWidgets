@@ -9,6 +9,8 @@ struct ForecastEntry: TimelineEntry {
     let stale: Bool
     /// Captured with the entry so the header names the spot the values came from.
     let spot: WindguruSpot?
+    /// Constituents for the tide row, cached per spot; nil inland.
+    let tide: TideHarmonics?
 }
 
 struct ForecastProvider: AppIntentTimelineProvider {
@@ -16,7 +18,8 @@ struct ForecastProvider: AppIntentTimelineProvider {
         let spot = WindguruConfig.load().first
         return ForecastEntry(date: Date(),
                              forecast: spot.flatMap { ForecastStore.load(for: $0.id) },
-                             stale: false, spot: spot)
+                             stale: false, spot: spot,
+                             tide: spot.flatMap { TideStore.load(for: $0.id) })
     }
 
     func snapshot(for configuration: SelectSpotIntent, in context: Context) async -> ForecastEntry {
@@ -32,14 +35,16 @@ struct ForecastProvider: AppIntentTimelineProvider {
 
     private func makeEntry(_ spotID: String?) async -> ForecastEntry {
         guard let spot = WindguruConfig.spot(spotID) else {
-            return ForecastEntry(date: Date(), forecast: nil, stale: true, spot: nil)
+            return ForecastEntry(date: Date(), forecast: nil, stale: true, spot: nil, tide: nil)
         }
-        if let fresh = await Windguru.fetch(spot) {
-            ForecastStore.save(fresh, for: spot.id)
-            return ForecastEntry(date: Date(), forecast: fresh, stale: false, spot: spot)
-        }
-        return ForecastEntry(date: Date(), forecast: ForecastStore.load(for: spot.id),
-                             stale: true, spot: spot)
+        let fresh = await Windguru.fetch(spot)
+        if let fresh { ForecastStore.save(fresh, for: spot.id) }
+        // Read the tide after the fetch: that is what caches the constituents
+        // the first time a spot is shown.
+        return ForecastEntry(date: Date(),
+                             forecast: fresh ?? ForecastStore.load(for: spot.id),
+                             stale: fresh == nil, spot: spot,
+                             tide: TideStore.load(for: spot.id))
     }
 }
 
@@ -168,8 +173,36 @@ private func wgInk(_ c: RGB) -> WGInk {
     return WGInk(bg: wgRGB(wgMix(c, hi, toward: away)), fg: wgRGB(ink))
 }
 
+/// Cloud cover, clear to overcast — windguru greys these cells the same way.
+private let wgCloudStops: [(Double, RGB)] = [
+    (0,   (255, 255, 255)), (20,  (240, 242, 245)), (40, (214, 218, 224)),
+    (60,  (184, 190, 198)), (80,  (150, 157, 167)), (100, (116, 124, 136)),
+]
+
+/// Rain, mm/h. Deliberately blue rather than grey: the row swaps between two
+/// quantities, so the colour has to say which one you are looking at.
+private let wgRainStops: [(Double, RGB)] = [
+    (0,   (222, 240, 255)), (0.5, (160, 210, 250)), (1, (104, 178, 245)),
+    (2,   (56, 142, 232)),  (4,   (30, 104, 200)),  (8, (22, 70, 160)),
+]
+
 private func wgWindColor(_ v: Double?) -> WGInk { wgColor(v, stops: wgWindStops) }
 private func wgTempColor(_ v: Double?) -> WGInk { wgColor(v, stops: wgTempStops) }
+private func wgCloudColor(_ v: Double?) -> WGInk { wgColor(v, stops: wgCloudStops) }
+private func wgRainColor(_ v: Double?) -> WGInk { wgColor(v, stops: wgRainStops) }
+
+/// What the combined sky row shows for one hour: rain when there is any,
+/// otherwise cloud cover. Below 0.05 mm/h windguru's own table prints nothing,
+/// and a "0.0" cell would just be noise.
+private func wgSkyCell(_ p: ForecastPoint) -> (text: String, ink: WGInk)? {
+    if let rain = p.rain, rain >= 0.05 {
+        // One decimal only while it fits the cell; heavy rain is a whole number.
+        let text = rain < 10 ? String(format: "%.1f", rain) : String(Int(rain.rounded()))
+        return (text, wgRainColor(rain))
+    }
+    guard let cloud = p.cloud else { return nil }
+    return (fmt0(cloud), wgCloudColor(cloud))
+}
 
 // MARK: - Table line (windguru-style rows: hours / wind / gust / arrows)
 
@@ -185,6 +218,13 @@ private struct WGCellMetrics {
     var rowGap: CGFloat = 1
     /// Windguru cells are square; 1pt only takes the hard edge off the pixels.
     var corner: CGFloat = 1
+    /// The tide row carries no digits, so it can be shorter than a value cell
+    /// and still read — the bar heights are the whole message.
+    var tideHeight: CGFloat = 10
+    /// The sky row is the only one that can print three characters ("100", or
+    /// "0.4" of rain), so it gets its own size rather than making every column
+    /// wide enough for a value the other rows never reach.
+    var skySize: CGFloat { valueSize - 2 }
 }
 
 /// Windguru's header band tints alternate day-by-day, which is what separates
@@ -197,6 +237,12 @@ private struct ForecastLine: View {
     let columns: Int
     let m: WGCellMetrics
     var showTemp = true
+    /// Cloud cover, swapped for rain in the hours it rains.
+    var showSky = false
+    /// Only drawn when the spot has tide constituents cached.
+    var tide: TideHarmonics?
+    /// Height, in cm from mean sea level, at or above which a bar goes green.
+    var greenAbove: Double?
 
     private let cal = Calendar.current
 
@@ -227,7 +273,12 @@ private struct ForecastLine: View {
             row { i in
                 Text(hourLabel(i))
                     .font(.system(size: m.labelSize, weight: .semibold))
-                    .foregroundStyle(startsNewDay(i) ? Pal.blue : .primary)
+                    // Grey marks the columns filled in from the longer-range
+                    // model, so the drop in resolution is visible in the table
+                    // and not only in the header. A new day still wins the
+                    // colour: knowing where Tuesday starts matters more.
+                    .foregroundStyle(startsNewDay(i) ? Pal.blue
+                                     : (points[i].tail == true ? Pal.gray : .primary))
                     .lineLimit(1)
                     .frame(maxWidth: .infinity,
                            minHeight: m.labelSize + 2, maxHeight: m.labelSize + 2)
@@ -258,6 +309,25 @@ private struct ForecastLine: View {
                     cell(fmt0(points[i].temp), ink: wgTempColor(points[i].temp), bold: false)
                 }
             }
+            if showSky {
+                row { i in
+                    // One row, two quantities: cloud cover in percent, replaced
+                    // by rain in mm/h whenever there is any. The palette is what
+                    // tells them apart — grey is sky, blue is water.
+                    if let sky = wgSkyCell(points[i]) {
+                        cell(sky.text, ink: sky.ink, bold: false, size: m.skySize)
+                    } else {
+                        cell("", ink: wgCloudColor(nil), bold: false, size: m.skySize)
+                    }
+                }
+            }
+            if let tide {
+                row { i in
+                    let height = Tide.height(tide, at: points[i].time)
+                    tideBar(Tide.level(tide, from: height),
+                            high: greenAbove.map { height >= $0 } ?? false)
+                }
+            }
         }
     }
 
@@ -272,14 +342,42 @@ private struct ForecastLine: View {
         }
     }
 
-    private func cell(_ text: String, ink: WGInk, bold: Bool) -> some View {
+    /// One hour of tide, as a column filling from the bottom.
+    ///
+    /// `level` is already scaled against the spot's mean high/low water, so a
+    /// neap day sits visibly short of a spring day rather than every day being
+    /// redrawn full-height — which is exactly what a per-window normalisation
+    /// would have thrown away.
+    ///
+    /// `high` colours the hours that clear the spot's configured level, so the
+    /// green band is the answer to "when can I go", read straight off the row.
+    private func tideBar(_ level: Double, high: Bool) -> some View {
+        let ink = high ? Pal.green : Pal.chart
+        return ZStack(alignment: .bottom) {
+            RoundedRectangle(cornerRadius: m.corner)
+                .fill(ink.opacity(0.15))
+            RoundedRectangle(cornerRadius: m.corner)
+                .fill(ink)
+                // A floor of 1pt: an empty cell at dead low water reads as
+                // missing data rather than as the bottom of the curve.
+                .frame(height: max(1, m.tideHeight * level))
+        }
+        .frame(maxWidth: .infinity, minHeight: m.tideHeight, maxHeight: m.tideHeight)
+    }
+
+    /// `size` overrides the row's font, which only the sky row needs: every
+    /// other row tops out at two characters, but cloud cover reaches "100" and
+    /// three digits at `valueSize` are wider than a 14-column cell — they came
+    /// out as "1…".
+    private func cell(_ text: String, ink: WGInk, bold: Bool,
+                      size: CGFloat? = nil) -> some View {
         Text(text)
             // Semibold rather than regular for the gust and temperature rows:
             // `wgMinLc` is APCA's threshold for small BOLD text, and regular
             // weight at this size would want Lc 75, which no saturated cell in
             // the ramp reaches with either ink. The wind row stays fully bold,
             // so the rows still read as a hierarchy.
-            .font(.system(size: m.valueSize, weight: bold ? .bold : .semibold))
+            .font(.system(size: size ?? m.valueSize, weight: bold ? .bold : .semibold))
             // Black or white per cell, decided by APCA in `wgInk`, and fixed
             // rather than `.primary`: the cell color doesn't change with the
             // system appearance, so neither should its ink.
@@ -329,6 +427,15 @@ private struct ForecastHeader: View {
                 .font(.system(size: size - 2, weight: .semibold))
                 .foregroundStyle(Pal.gray)
                 .lineLimit(1)
+            // Named, never silent: the last columns come from a coarser model,
+            // and the header is where you find out which.
+            if let tail = forecast.tailModel {
+                Text("+\(tail)")
+                    .font(.system(size: size - 3, weight: .medium))
+                    .foregroundStyle(Pal.gray)
+                    .lineLimit(1)
+                    .layoutPriority(-1)
+            }
         }
     }
 }
@@ -344,6 +451,9 @@ private struct ForecastGrid: View {
     let m: WGCellMetrics
     var headerSize: CGFloat
     var showTemp = true
+    var showSky = false
+    var tide: TideHarmonics?
+    var greenAbove: Double?
     /// Gap between two stacked day-strips — the only generous space in the grid.
     var lineGap: CGFloat = 5
 
@@ -356,7 +466,9 @@ private struct ForecastGrid: View {
             ForEach(0..<lines, id: \.self) { line in
                 let slice = Array(pts.dropFirst(line * columns).prefix(columns))
                 if !slice.isEmpty {
-                    ForecastLine(points: slice, columns: columns, m: m, showTemp: showTemp)
+                    ForecastLine(points: slice, columns: columns, m: m,
+                                 showTemp: showTemp, showSky: showSky, tide: tide,
+                                 greenAbove: greenAbove)
                 }
             }
             Spacer(minLength: 0)
@@ -395,11 +507,14 @@ struct ForecastWidgetView: View {
                                           arrowSize: 9),
                                  headerSize: 11, lineGap: 4)
                 case .systemLarge, .systemExtraLarge:
+                    // The only family with the height for the sky and tide
+                    // rows: they add 26 pt per line, which medium hasn't got.
                     ForecastGrid(title: spot.heading, forecast: f, stale: entry.stale,
                                  columns: 14, lines: 3,
                                  m: .init(labelSize: 10, valueSize: 12, cellHeight: 14,
                                           arrowSize: 10),
-                                 headerSize: 13, lineGap: 5)
+                                 headerSize: 13, showSky: true, tide: entry.tide,
+                                 greenAbove: spot.greenAboveMSL, lineGap: 5)
                 default:
                     ForecastGrid(title: spot.heading, forecast: f, stale: entry.stale,
                                  columns: 7, lines: 2,
