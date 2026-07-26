@@ -236,6 +236,19 @@ private struct ForecastLine: View {
     let points: [ForecastPoint]
     let columns: Int
     let m: WGCellMetrics
+    /// Concrete column width, measured once by `ForecastGrid`.
+    ///
+    /// Concrete, not `maxWidth: .infinity`, and this is the whole reason the
+    /// widget host used to spin: a flexible child makes its stack *probe* it —
+    /// size it repeatedly to discover how much it can give or take. Nest that
+    /// (grid VStack → line VStack → row HStack) and put two flexible frames on
+    /// every cell, and the probes multiply instead of adding. A sample of the
+    /// spinning host caught 27 nested `StackLayout.placeChildren` frames in one
+    /// stack, cycling StackLayout → _PaddingLayout → _FlexFrameLayout.
+    ///
+    /// With a concrete width there is nothing to negotiate, so the row is laid
+    /// out once. Keep it that way: no `maxWidth: .infinity` below this point.
+    let colWidth: CGFloat
     var showTemp = true
     /// Cloud cover, swapped for rain in the hours it rains.
     var showSky = false
@@ -280,8 +293,7 @@ private struct ForecastLine: View {
                     .foregroundStyle(startsNewDay(i) ? Pal.blue
                                      : (points[i].tail == true ? Pal.gray : .primary))
                     .lineLimit(1)
-                    .frame(maxWidth: .infinity,
-                           minHeight: m.labelSize + 2, maxHeight: m.labelSize + 2)
+                    .frame(width: colWidth, height: m.labelSize + 2)
                     .background(bandTint(i), in: RoundedRectangle(cornerRadius: m.corner))
             }
             row { i in
@@ -326,12 +338,20 @@ private struct ForecastLine: View {
     // `slots` reproduces `row`'s geometry exactly so the drawn rows stay in
     // column with the text rows above them.
 
-    /// The x positions of the `n` equal-width columns `row` would lay out.
-    private func slots(_ width: CGFloat) -> [(x: CGFloat, w: CGFloat)] {
-        let n = min(columns, points.count)
-        guard n > 0 else { return [] }
-        let w = (width - m.gap * CGFloat(n - 1)) / CGFloat(n)
-        return (0..<n).map { (CGFloat($0) * (w + m.gap), w) }
+    /// How many columns this line actually draws.
+    private var slotCount: Int { min(columns, points.count) }
+
+    /// Full row width, so the drawn rows are concrete in both axes like the
+    /// text rows beside them — a width-flexible Canvas would reintroduce
+    /// exactly the probing `colWidth` exists to avoid.
+    private var rowWidth: CGFloat {
+        guard slotCount > 0 else { return 0 }
+        return colWidth * CGFloat(slotCount) + m.gap * CGFloat(slotCount - 1)
+    }
+
+    /// The x positions of the columns, matching `row`'s HStack exactly.
+    private func slots() -> [(x: CGFloat, w: CGFloat)] {
+        (0..<slotCount).map { (CGFloat($0) * (colWidth + m.gap), colWidth) }
     }
 
     /// Wind direction, one arrow per column.
@@ -350,7 +370,7 @@ private struct ForecastLine: View {
                 Text(Image(systemName: "arrow.up"))
                     .font(.system(size: m.arrowSize, weight: .bold))
                     .foregroundStyle(.primary))
-            for (i, slot) in slots(size.width).enumerated() {
+            for (i, slot) in slots().enumerated() {
                 let centre = CGPoint(x: slot.x + slot.w / 2, y: size.height / 2)
                 ctx.drawLayer { layer in
                     layer.translateBy(x: centre.x, y: centre.y)
@@ -359,7 +379,7 @@ private struct ForecastLine: View {
                 }
             }
         }
-        .frame(height: m.arrowSize + 2)
+        .frame(width: rowWidth, height: m.arrowSize + 2)
     }
 
     /// One hour of tide per column, as a bar filling from the bottom.
@@ -374,7 +394,7 @@ private struct ForecastLine: View {
     private var tideRow: some View {
         Canvas { ctx, size in
             guard let tide else { return }
-            for (i, slot) in slots(size.width).enumerated() {
+            for (i, slot) in slots().enumerated() {
                 let height = Tide.height(tide, at: points[i].time)
                 let level = Tide.level(tide, from: height)
                 let ink = (greenAbove.map { height >= $0 } ?? false) ? Pal.green : Pal.chart
@@ -390,16 +410,21 @@ private struct ForecastLine: View {
                          with: .color(ink))
             }
         }
-        .frame(height: m.tideHeight)
+        .frame(width: rowWidth, height: m.tideHeight)
     }
 
     /// One table row: `columns` equal-width slots (blank past the data's end).
+    ///
+    /// The row adds no frame of its own — each cell already sizes itself to
+    /// `colWidth`. It used to wrap every child in a second
+    /// `.frame(maxWidth: .infinity)` on top of the cell's own, which gave the
+    /// HStack two nested flexible frames per column to negotiate.
     private func row<Content: View>(@ViewBuilder _ content: @escaping (Int) -> Content) -> some View {
         HStack(spacing: m.gap) {
             // Only the columns that have data — a short final line simply ends,
             // rather than padding with placeholder views the host must lay out.
-            ForEach(0..<min(columns, points.count), id: \.self) { i in
-                content(i).frame(maxWidth: .infinity)
+            ForEach(0..<slotCount, id: \.self) { i in
+                content(i)
             }
         }
     }
@@ -427,10 +452,11 @@ private struct ForecastLine: View {
             // widget HOST process has to lay out. The values are two or three
             // characters in a cell sized for them, so it never bought anything.
             //
-            // Fixed height, not minimum: windguru's cells are tighter than a
-            // text line's natural height, and digits have no descenders to clip.
-            .frame(maxWidth: .infinity,
-                   minHeight: m.cellHeight, maxHeight: m.cellHeight)
+            // Fixed, not minimum, and in both axes: windguru's cells are
+            // tighter than a text line's natural height, digits have no
+            // descenders to clip, and a concrete size is what keeps the row out
+            // of the layout negotiation described on `colWidth`.
+            .frame(width: colWidth, height: m.cellHeight)
             .background(ink.bg, in: RoundedRectangle(cornerRadius: m.corner))
     }
 }
@@ -496,26 +522,38 @@ private struct ForecastGrid: View {
     /// Gap between two stacked day-strips — the only generous space in the grid.
     var lineGap: CGFloat = 5
 
+    /// Own margins instead of WidgetKit's default (which is much larger):
+    /// windguru runs its table nearly edge to edge, so keep these minimal.
+    private let hMargin: CGFloat = 6
+    private let vMargin: CGFloat = 5
+
     var body: some View {
         let pts = forecast.upcoming(hours: columns * lines)
-        VStack(alignment: .leading, spacing: lineGap) {
-            ForecastHeader(title: title, forecast: forecast, stale: stale,
-                           size: headerSize, days: dayRange(pts))
-                .padding(.bottom, -1)
-            ForEach(0..<lines, id: \.self) { line in
-                let slice = Array(pts.dropFirst(line * columns).prefix(columns))
-                if !slice.isEmpty {
-                    ForecastLine(points: slice, columns: columns, m: m,
-                                 showTemp: showTemp, showSky: showSky, tide: tide,
-                                 greenAbove: greenAbove)
+        // Measured once, here, and handed down as a concrete number. One
+        // GeometryReader at the top of the table costs a single layout pass;
+        // the per-cell flexibility it replaces cost the host a cascade of them
+        // (see `ForecastLine.colWidth`).
+        GeometryReader { geo in
+            let inner = geo.size.width - hMargin * 2
+            let colWidth = max(1, (inner - m.gap * CGFloat(columns - 1)) / CGFloat(columns))
+            VStack(alignment: .leading, spacing: lineGap) {
+                ForecastHeader(title: title, forecast: forecast, stale: stale,
+                               size: headerSize, days: dayRange(pts))
+                    .padding(.bottom, -1)
+                ForEach(0..<lines, id: \.self) { line in
+                    let slice = Array(pts.dropFirst(line * columns).prefix(columns))
+                    if !slice.isEmpty {
+                        ForecastLine(points: slice, columns: columns, m: m,
+                                     colWidth: colWidth,
+                                     showTemp: showTemp, showSky: showSky, tide: tide,
+                                     greenAbove: greenAbove)
+                    }
                 }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .padding(.horizontal, hMargin)
+            .padding(.vertical, vMargin)
         }
-        // Own margins instead of WidgetKit's default (which is much larger):
-        // windguru runs its table nearly edge to edge, so keep these minimal.
-        .padding(.horizontal, 6)
-        .padding(.vertical, 5)
     }
 
     /// "Sat" or "Sat–Sun" — the days covered, so hour cells need no weekday.

@@ -26,6 +26,24 @@ echo "==> Build number: $CUR → $NEW"
 # WidgetKit won't reload outside Xcode, so a placed widget keeps old code.
 echo "==> Building (Release)…"
 bash scripts/configure.sh
+# Signing stays the Developer ID from project.yml. Do not switch this to ad-hoc.
+#
+# It was tried, and it is a bad trade. Ad-hoc does make launches dramatically
+# faster — measured on the same bundle back to back, Developer ID took 44.61s to
+# execute its first instruction against ad-hoc's 0.37s, because a Developer ID
+# binary has its certificate chain validated at exec and the result is cached per
+# binary, so every rebuild pays it again. But ad-hoc sets TeamIdentifier to
+# nothing, and two things break with it:
+#
+#   - The App Group container JHV8UWZS57.group.* is no longer recognised as ours,
+#     so macOS prompts "would like to access data from other apps" on launch.
+#   - Keychain ACLs are bound to the signing identity, so reading Claude Code's
+#     Keychain items stops working and the usage widget shows one account
+#     instead of all of them.
+#
+# If the 44s launch needs solving, solve it at the cause — the exec-time
+# certificate validation, most likely a revocation check timing out on the
+# network — not by changing the app's identity.
 xcodebuild -project "$ROOT/MyWidgets.xcodeproj" -scheme MyWidgets \
     -destination "generic/platform=macOS" \
     -configuration Release -derivedDataPath "$BUILD_DIR" build >/dev/null

@@ -98,6 +98,16 @@ write_entitlements() {
         echo '    <array>'
         echo "        <string>$group</string>"
         echo '    </array>'
+        # TEMPORARY DIAGNOSTIC — set DIAG_DEBUGGABLE=1 to make the binaries
+        # inspectable. Signed with the hardened runtime and without this,
+        # `sample` cannot walk their stacks: a hung launch shows only
+        # `_dyld_start` plus "Binary images description not available", which
+        # looks exactly like a pre-main block but is really no visibility.
+        # Never set this for a release build.
+        if [ "${DIAG_DEBUGGABLE:-0}" = 1 ]; then
+            echo '    <key>com.apple.security.get-task-allow</key>'
+            echo '    <true/>'
+        fi
         echo '</dict>'
         echo '</plist>'
     } > "$file"
