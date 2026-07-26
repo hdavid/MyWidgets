@@ -290,20 +290,7 @@ private struct ForecastLine: View {
             row { i in
                 cell(fmt0(points[i].gust), ink: wgWindColor(points[i].gust), bold: false)
             }
-            row { i in
-                // Windguru's own convention, which is the opposite of the
-                // weather-vane one the Live Metrics wind rose uses: the arrow
-                // flies WITH the wind, showing where it blows TO. `dir` is the
-                // meteorological direction it comes from, hence the half turn.
-                // Reading this table against windguru.cz beats internal
-                // consistency with a widget that sits next to it.
-                Image(systemName: "arrow.up")
-                    .font(.system(size: m.arrowSize, weight: .bold))
-                    .rotationEffect(.degrees(points[i].dir + 180))
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity,
-                           minHeight: m.arrowSize + 2, maxHeight: m.arrowSize + 2)
-            }
+            arrowRow
             if showTemp {
                 row { i in
                     cell(fmt0(points[i].temp), ink: wgTempColor(points[i].temp), bold: false)
@@ -321,14 +308,89 @@ private struct ForecastLine: View {
                     }
                 }
             }
-            if let tide {
-                row { i in
-                    let height = Tide.height(tide, at: points[i].time)
-                    tideBar(Tide.level(tide, from: height),
-                            high: greenAbove.map { height >= $0 } ?? false)
+            if tide != nil {
+                tideRow
+            }
+        }
+    }
+
+    // MARK: Rows drawn instead of laid out
+    //
+    // The arrow and tide rows are the two that carry no text, and they were the
+    // two most expensive: 14 rotated `Image`s and 28 `RoundedRectangle`s per
+    // line, each one a view the widget HOST process lays out and each arrow
+    // carrying its own transform effect. Drawn in a `Canvas` they cost one view
+    // per row instead, which is the whole point — see the note on `cell`, and
+    // commit ccaa09d, which cut this table for the same reason.
+    //
+    // `slots` reproduces `row`'s geometry exactly so the drawn rows stay in
+    // column with the text rows above them.
+
+    /// The x positions of the `n` equal-width columns `row` would lay out.
+    private func slots(_ width: CGFloat) -> [(x: CGFloat, w: CGFloat)] {
+        let n = min(columns, points.count)
+        guard n > 0 else { return [] }
+        let w = (width - m.gap * CGFloat(n - 1)) / CGFloat(n)
+        return (0..<n).map { (CGFloat($0) * (w + m.gap), w) }
+    }
+
+    /// Wind direction, one arrow per column.
+    ///
+    /// Windguru's own convention, which is the opposite of the weather-vane one
+    /// the Live Metrics wind rose uses: the arrow flies WITH the wind, showing
+    /// where it blows TO. `dir` is the meteorological direction it comes from,
+    /// hence the half turn. Reading this table against windguru.cz beats
+    /// internal consistency with a widget that sits next to it.
+    private var arrowRow: some View {
+        // The same SF Symbol at the same size and weight as before, resolved
+        // once and stamped 14 times, rather than 14 Images each rotated by a
+        // modifier.
+        Canvas { ctx, size in
+            let glyph = ctx.resolve(
+                Text(Image(systemName: "arrow.up"))
+                    .font(.system(size: m.arrowSize, weight: .bold))
+                    .foregroundStyle(.primary))
+            for (i, slot) in slots(size.width).enumerated() {
+                let centre = CGPoint(x: slot.x + slot.w / 2, y: size.height / 2)
+                ctx.drawLayer { layer in
+                    layer.translateBy(x: centre.x, y: centre.y)
+                    layer.rotate(by: .degrees(points[i].dir + 180))
+                    layer.draw(glyph, at: .zero, anchor: .center)
                 }
             }
         }
+        .frame(height: m.arrowSize + 2)
+    }
+
+    /// One hour of tide per column, as a bar filling from the bottom.
+    ///
+    /// `Tide.level` is already scaled against the spot's mean high/low water, so
+    /// a neap day sits visibly short of a spring day rather than every day being
+    /// redrawn full-height — which is exactly what a per-window normalisation
+    /// would have thrown away.
+    ///
+    /// `greenAbove` colours the hours that clear the spot's configured level, so
+    /// the green band is the answer to "when can I go", read straight off the row.
+    private var tideRow: some View {
+        Canvas { ctx, size in
+            guard let tide else { return }
+            for (i, slot) in slots(size.width).enumerated() {
+                let height = Tide.height(tide, at: points[i].time)
+                let level = Tide.level(tide, from: height)
+                let ink = (greenAbove.map { height >= $0 } ?? false) ? Pal.green : Pal.chart
+                let track = CGRect(x: slot.x, y: 0, width: slot.w, height: size.height)
+                ctx.fill(Path(roundedRect: track, cornerRadius: m.corner),
+                         with: .color(ink.opacity(0.15)))
+                // A floor of 1pt: an empty cell at dead low water reads as
+                // missing data rather than as the bottom of the curve.
+                let filled = max(1, size.height * level)
+                ctx.fill(Path(roundedRect: CGRect(x: slot.x, y: size.height - filled,
+                                                  width: slot.w, height: filled),
+                              cornerRadius: m.corner),
+                         with: .color(ink))
+            }
+        }
+        .frame(height: m.tideHeight)
     }
 
     /// One table row: `columns` equal-width slots (blank past the data's end).
@@ -340,29 +402,6 @@ private struct ForecastLine: View {
                 content(i).frame(maxWidth: .infinity)
             }
         }
-    }
-
-    /// One hour of tide, as a column filling from the bottom.
-    ///
-    /// `level` is already scaled against the spot's mean high/low water, so a
-    /// neap day sits visibly short of a spring day rather than every day being
-    /// redrawn full-height — which is exactly what a per-window normalisation
-    /// would have thrown away.
-    ///
-    /// `high` colours the hours that clear the spot's configured level, so the
-    /// green band is the answer to "when can I go", read straight off the row.
-    private func tideBar(_ level: Double, high: Bool) -> some View {
-        let ink = high ? Pal.green : Pal.chart
-        return ZStack(alignment: .bottom) {
-            RoundedRectangle(cornerRadius: m.corner)
-                .fill(ink.opacity(0.15))
-            RoundedRectangle(cornerRadius: m.corner)
-                .fill(ink)
-                // A floor of 1pt: an empty cell at dead low water reads as
-                // missing data rather than as the bottom of the curve.
-                .frame(height: max(1, m.tideHeight * level))
-        }
-        .frame(maxWidth: .infinity, minHeight: m.tideHeight, maxHeight: m.tideHeight)
     }
 
     /// `size` overrides the row's font, which only the sky row needs: every

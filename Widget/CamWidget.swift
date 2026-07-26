@@ -41,7 +41,15 @@ enum CamFetch {
 
     /// Decode at reduced size — a webcam frame can be 3040×1710 and widget
     /// extensions have a tight memory ceiling; never decode full-res.
-    static func downsample(_ data: Data, maxPixel: CGFloat = 1400) -> CGImage? {
+    ///
+    /// 800 rather than 1400: the widest family this draws into is 344 pt, which
+    /// is 688 px on a 2x display, so 1400 was roughly five times the pixels any
+    /// of them can show. That surplus is not free — the frame goes into the
+    /// timeline archive that the widget HOST process decodes and draws on every
+    /// render pass, and it took those archives to 1.2 MB. chronod said so
+    /// itself: "Filtered image [28: 1400-788]: exit (no size constraints
+    /// configured)".
+    static func downsample(_ data: Data, maxPixel: CGFloat = 800) -> CGImage? {
         let opts = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceThumbnailMaxPixelSize: maxPixel,
