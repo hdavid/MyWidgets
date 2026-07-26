@@ -13,7 +13,7 @@ settings:
     DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "2.0"
-    CURRENT_PROJECT_VERSION: "27"
+    CURRENT_PROJECT_VERSION: "29"
 
 # Two multiplatform targets — one app and one widget extension, each building for
 # both macOS and iOS from the same sources. Platform differences live in the
