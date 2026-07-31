@@ -74,8 +74,8 @@ struct WindWidgetView: View {
                            : "Add a Grafana URL and token in the app’s Grafana tab")
             }
         }
-        // Click opens the dashboard configured for this source.
-        .widgetURL(entry.source.flatMap { URL(string: $0.dashboardURL) })
+        // Click opens the dashboard configured for this source, in the browser.
+        .opensInBrowser(entry.source.flatMap { URL(string: $0.dashboardURL) })
         .containerBackground(for: .widget) {
             ZStack(alignment: .bottom) {
                 Pal.bg

@@ -125,7 +125,7 @@ struct CamView: View {
         .background(.black.opacity(0.45), in: Capsule())
         .opacity(entry.image == nil ? 0 : 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-        .widgetURL(entry.spec?.page)
+        .opensInBrowser(entry.spec?.page)
         .containerBackground(for: .widget) {
             if let img = entry.image {
                 Image(decorative: img, scale: 1)

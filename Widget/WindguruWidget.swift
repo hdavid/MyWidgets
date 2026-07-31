@@ -324,6 +324,37 @@ private struct ForecastLine: View {
                 tideRow
             }
         }
+        .overlay { dayBreakRule }
+    }
+
+    /// A hairline down the whole line wherever the day changes.
+    ///
+    /// An overlay, and drawn rather than inserted as a column: it costs one view
+    /// for the entire line, contributes nothing to the layout (see `colWidth`),
+    /// and lands in the 1pt gap `m.gap` already leaves between cells — so no
+    /// column gives up width for it and the table keeps its 16 hours.
+    ///
+    /// The tinted hour label stays: it says WHICH column starts the day, the
+    /// rule says where the boundary is, and on the first column of a line
+    /// (`startsNewDay` skips i == 0) the label is the only marker there is.
+    private var dayBreakRule: some View {
+        Canvas { ctx, size in
+            for x in dayBreaks {
+                ctx.fill(Path(CGRect(x: x - m.gap / 2, y: 0,
+                                     width: m.gap, height: size.height)),
+                         with: .color(Pal.blue.opacity(0.55)))
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// Gutter centres, in the line's own coordinates, of every day transition —
+    /// the same column geometry as `row` and `slots`.
+    private var dayBreaks: [CGFloat] {
+        guard slotCount > 1 else { return [] }
+        return (1..<slotCount).compactMap { i in
+            startsNewDay(i) ? CGFloat(i) * (colWidth + m.gap) - m.gap / 2 : nil
+        }
     }
 
     // MARK: Rows drawn instead of laid out
@@ -574,12 +605,12 @@ struct ForecastWidgetView: View {
         Group {
             if let spot = entry.spot, let f = entry.forecast,
                !f.upcoming(hours: 1).isEmpty {
-                // 14 columns is one full daylight span (08h…21h), so each line
+                // 16 columns is one full daylight span (07h…22h), so each line
                 // reads as roughly one day of the strip.
                 switch family {
                 case .systemMedium:
                     ForecastGrid(title: spot.heading, forecast: f, stale: entry.stale,
-                                 columns: 14, lines: 2,
+                                 columns: 16, lines: 2,
                                  m: .init(labelSize: 9, valueSize: 11, cellHeight: 12,
                                           arrowSize: 9),
                                  headerSize: 11, lineGap: 4)
@@ -587,14 +618,15 @@ struct ForecastWidgetView: View {
                     // The only family with the height for the sky and tide
                     // rows: they add 26 pt per line, which medium hasn't got.
                     ForecastGrid(title: spot.heading, forecast: f, stale: entry.stale,
-                                 columns: 14, lines: 3,
+                                 columns: 16, lines: 3,
                                  m: .init(labelSize: 10, valueSize: 12, cellHeight: 14,
                                           arrowSize: 10),
                                  headerSize: 13, showSky: true, tide: entry.tide,
                                  greenAbove: spot.greenAboveMSL, lineGap: 5)
                 default:
+                    // Half a day per line, so small still shows one whole day.
                     ForecastGrid(title: spot.heading, forecast: f, stale: entry.stale,
-                                 columns: 7, lines: 2,
+                                 columns: 8, lines: 2,
                                  m: .init(labelSize: 9, valueSize: 10, cellHeight: 11,
                                           arrowSize: 8),
                                  headerSize: 10, lineGap: 4)
@@ -605,7 +637,7 @@ struct ForecastWidgetView: View {
                                : "Add a windguru spot in the app’s Windguru tab")
             }
         }
-        .widgetURL(entry.spot.flatMap {
+        .opensInBrowser(entry.spot.flatMap {
             $0.isConfigured ? Windguru.pageURL(spot: $0.spotId) : nil
         })
         .containerBackground(for: .widget) { Pal.bg }
@@ -643,5 +675,12 @@ struct ForecastWidget: Widget {
         .configurationDisplayName("Windguru Forecast")
         .description("Hourly wind forecast (knots), daylight hours. Right-click → Edit Widget to pick the spot.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        // WidgetKit's default content margins are ~16 pt a side, and they are
+        // applied ON TOP of `ForecastGrid`'s own 6 pt — which is where the band
+        // of empty background either side of the table came from. Measured on a
+        // screenshot of the large family it was 1.1 cell wide on each side, so
+        // taking it back is what pays for the 15th and 16th column; `ForecastGrid`
+        // keeps its own small inset, windguru-style, nearly edge to edge.
+        .contentMarginsDisabled()
     }
 }

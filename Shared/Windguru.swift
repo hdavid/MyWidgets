@@ -56,8 +56,14 @@ enum WindguruCatalog {
 }
 
 /// Only show daylight hours (local) — the widget skips night rows.
+///
+/// 16 hours rather than the 08…21 this started as: the table is laid out from a
+/// measured column width, and with WidgetKit's own content margins turned off
+/// (see `ForecastWidget`) the row has width for 16 columns at very nearly the
+/// old cell size. The two extra hours are spent at the ends of the day, where a
+/// summer session actually happens.
 enum WindguruDaytime {
-    static let range = 8...21   // 08h … 21h inclusive
+    static let range = 7...22   // 07h … 22h inclusive
 }
 
 // MARK: - Spots (shared via the App Group container)
