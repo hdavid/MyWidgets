@@ -83,12 +83,27 @@ struct ConfigSettingsView: View {
                     .padding(4)
                 }
 
-                Button {
-                    WidgetCenter.shared.reloadAllTimelines()
-                    status = "Asked every widget to reload."
-                    statusColor = .secondary
-                } label: {
-                    Label("Reload all widgets", systemImage: "arrow.clockwise")
+                HStack {
+                    Button {
+                        WidgetCenter.shared.reloadAllTimelines()
+                        status = "Asked every widget to reload."
+                        statusColor = .secondary
+                    } label: {
+                        Label("Reload all widgets", systemImage: "arrow.clockwise")
+                    }
+                    #if os(macOS)
+                    Button {
+                        status = WidgetHostReset.restartSidebar()
+                        statusColor = .secondary
+                    } label: {
+                        Label("Unstick widget sidebar", systemImage: "bandage")
+                    }
+                    .help("""
+                    Restart NotificationCenter, the Apple process that hosts the \
+                    widget sidebar. Use when the sidebar beachballs or burns CPU. \
+                    It respawns in a second; nothing is lost.
+                    """)
+                    #endif
                 }
 
                 if let message = opened.message {
