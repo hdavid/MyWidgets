@@ -194,6 +194,8 @@ final class UsageAppModel: ObservableObject {
 
 struct PanelView: View {
     @ObservedObject var model: UsageAppModel
+    @State private var sidebarNote: String?
+    @State private var sidebarNoteClearer: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -235,9 +237,40 @@ struct PanelView: View {
             if let err = model.lastError {
                 Text(err).font(.caption2).foregroundStyle(.red).lineLimit(3)
             }
+
+            Divider().opacity(0.35)
+
+            // Escape hatch for the Apple bug where NotificationCenter (the
+            // widget sidebar host) spins at 100% CPU. Lives here because the
+            // menu-bar panel stays reachable even when the sidebar is stuck.
+            HStack {
+                Button(action: unstickSidebar) {
+                    Label("Unstick widget sidebar", systemImage: "bandage")
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+                .help("""
+                Restart NotificationCenter, the Apple process that hosts the \
+                widget sidebar. Use when the sidebar beachballs or burns CPU. \
+                It respawns in a second; nothing is lost.
+                """)
+                Spacer()
+                if let note = sidebarNote {
+                    Text(note).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                }
+            }
         }
         .padding(14)
         .frame(width: 360)
+    }
+
+    private func unstickSidebar() {
+        sidebarNote = WidgetHostReset.restartSidebar()
+        sidebarNoteClearer?.cancel()
+        sidebarNoteClearer = Task {
+            try? await Task.sleep(for: .seconds(6))
+            if !Task.isCancelled { sidebarNote = nil }
+        }
     }
 }
 
