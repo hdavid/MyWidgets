@@ -120,10 +120,14 @@ write_entitlements entitlements/macOSWidget.entitlements macOS "$APP_GROUP"     
 if [ -n "$APP_GROUP_IOS" ]; then
     write_entitlements entitlements/iOS.entitlements       iOS "$APP_GROUP_IOS" no
     write_entitlements entitlements/iOSWidget.entitlements iOS "$APP_GROUP_IOS" no
+    # watchOS follows the iOS App Group naming (group. prefix, no team id).
+    write_entitlements entitlements/watchOS.entitlements       iOS "$APP_GROUP_IOS" no
+    write_entitlements entitlements/watchOSWidget.entitlements iOS "$APP_GROUP_IOS" no
 else
     # Declaring an empty or unavailable group makes signing fail outright, so
     # ship a plist with no capabilities at all.
-    for f in entitlements/iOS.entitlements entitlements/iOSWidget.entitlements; do
+    for f in entitlements/iOS.entitlements entitlements/iOSWidget.entitlements \
+             entitlements/watchOS.entitlements entitlements/watchOSWidget.entitlements; do
         printf '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict/>\n</plist>\n' > "$f"
     done
 fi

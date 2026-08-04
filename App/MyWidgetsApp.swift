@@ -17,7 +17,16 @@ struct MyWidgetsApp: App {
     #if os(macOS)
     @StateObject private var model = UsageAppModel()
     #endif
+    #if os(iOS)
+    @Environment(\.scenePhase) private var scenePhase
+    #endif
     @State private var selectedTab: SettingsTab = .grafana
+
+    init() {
+        #if os(iOS)
+        PhoneWatchSync.shared.start()
+        #endif
+    }
 
     var body: some Scene {
         #if os(macOS)
@@ -44,6 +53,14 @@ struct MyWidgetsApp: App {
         WindowGroup {
             MainWindowView(selection: $selectedTab)
                 .onOpenURL(perform: handle)
+                // Any visit to the app may have edited config; leaving is the
+                // moment to hand the result to the watch. The .active push
+                // catches up after a fresh pairing or install.
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active || phase == .background {
+                        PhoneWatchSync.shared.push()
+                    }
+                }
         }
         #endif
     }

@@ -18,7 +18,11 @@ typealias PlatformColor = UIColor
 // light/dark switch repaints without the widget having to reload.
 
 private func dyn(_ light: String, _ dark: String) -> Color {
-    #if canImport(AppKit)
+    #if os(watchOS)
+    // Watch UI is always on black, and UIColor(dynamicProvider:) does not
+    // exist there — the dark variant simply is the palette.
+    return Color(hex: dark)
+    #elseif canImport(AppKit)
     return Color(nsColor: NSColor(name: nil) { appearance in
         let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         return NSColor(hex: isDark ? dark : light)

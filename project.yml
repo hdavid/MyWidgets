@@ -6,6 +6,9 @@ options:
     # 17.0 is the floor for AppIntentConfiguration, which is what lets one
     # widget kind be placed many times with a different source in each.
     iOS: "17.0"
+    # 10.0 pairs with iOS 17 and is the floor for the vertical-page TabView
+    # and for AppIntent-configurable complications.
+    watchOS: "10.0"
   createIntermediateGroups: true
 
 settings:
@@ -13,7 +16,7 @@ settings:
     DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "2.0"
-    CURRENT_PROJECT_VERSION: "52"
+    CURRENT_PROJECT_VERSION: "53"
 
 # Two multiplatform targets — one app and one widget extension, each building for
 # both macOS and iOS from the same sources. Platform differences live in the
@@ -101,6 +104,16 @@ targets:
     dependencies:
       - target: MyWidgetsWidget
         embed: true
+      # The watch companion rides inside the iOS app only — macOS has no watch.
+      # The explicit copyPhase is what lands it in the "Watch" directory of the
+      # app bundle (Xcode's "Embed Watch Content" phase); without it xcodegen
+      # would embed it like a plugin.
+      - target: MyWidgetsWatch
+        embed: true
+        destinationFilters: [iOS]
+        copyPhase:
+          destination: productsDirectory
+          subpath: $(CONTENTS_FOLDER_PATH)/Watch
 
   MyWidgetsWidget:
     type: app-extension
@@ -130,3 +143,61 @@ targets:
         "ARCHS[sdk=macosx*]": "arm64 x86_64"
         "CODE_SIGN_ENTITLEMENTS[sdk=iphone*]": entitlements/iOSWidget.entitlements
         "CODE_SIGN_STYLE[sdk=iphone*]": Automatic
+
+  # ── Watch companion ─────────────────────────────────────────────────────────
+  # No config UI of its own: the iPhone app pushes its ConfigBundle over
+  # WatchConnectivity (App/PhoneWatchSync.swift → WatchApp/WatchConfigReceiver.swift)
+  # and the watch applies it to its own App Group container. Everything else —
+  # data fetching, colors, the wind views — is the same Shared/ code the other
+  # targets compile.
+  MyWidgetsWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: WatchApp
+      - path: Shared
+      - path: BundledConfig
+        type: folder
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ${IOS_BUNDLE_PREFIX}.${APP_NAME}.watchkitapp
+        DEVELOPMENT_TEAM: ${IOS_DEVELOPMENT_TEAM}
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: "NO"
+        TARGETED_DEVICE_FAMILY: "4"
+        CODE_SIGN_ENTITLEMENTS: entitlements/watchOS.entitlements
+        CODE_SIGN_STYLE: Automatic
+    info:
+      path: WatchApp/Info.plist
+      properties:
+        CFBundleDisplayName: "My Widgets"
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Single-target watch app (no separate WatchKit extension) …
+        WKApplication: true
+        # … that is the companion of the iOS app it is embedded in.
+        WKCompanionAppBundleIdentifier: ${IOS_BUNDLE_PREFIX}.${APP_NAME}
+    dependencies:
+      - target: MyWidgetsWatchWidget
+        embed: true
+
+  MyWidgetsWatchWidget:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: WatchWidget
+      # The same configuration intents as the iOS/macOS widgets, so each placed
+      # complication picks its Grafana source the same way.
+      - path: Widget/WidgetIntents.swift
+      - path: Shared
+      - path: BundledConfig
+        type: folder
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ${IOS_BUNDLE_PREFIX}.${APP_NAME}.watchkitapp.Widget
+        DEVELOPMENT_TEAM: ${IOS_DEVELOPMENT_TEAM}
+        INFOPLIST_FILE: WatchWidget/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        TARGETED_DEVICE_FAMILY: "4"
+        CODE_SIGN_ENTITLEMENTS: entitlements/watchOSWidget.entitlements
+        CODE_SIGN_STYLE: Automatic

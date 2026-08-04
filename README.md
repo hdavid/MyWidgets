@@ -93,6 +93,12 @@ back — that's the route from Mac to iPhone. Grafana tokens are opt-in on expor
 importing a token-less file keeps whatever tokens the target device already has,
 so it can't silently wipe them.
 
+The Apple Watch is the exception: it has no config UI at all. The iPhone app
+pushes its whole config (tokens included, so the watch fetches Grafana itself)
+over WatchConnectivity whenever it activates or leaves the foreground, and the
+watch writes it into its own container. Open the watch app once after installing
+it — that first launch is what activates the session on the watch side.
+
 ## Building
 
 Requires Xcode and [xcodegen](https://github.com/yonaskolb/XcodeGen)
@@ -115,6 +121,10 @@ pick an iPhone/iPad destination:
 A device install needs a provisioning profile, so the iOS side uses automatic
 signing and Xcode manages it — there's no Developer ID path like on the Mac. The
 simulator needs nothing.
+
+The watch companion rides along automatically: installing the iOS app on a
+phone offers the watch app to its paired watch. To run it directly, pick the
+`MyWidgetsWatch` scheme and a watch simulator/device destination.
 
 Every build path starts with `scripts/configure.sh`, which resolves your build
 identity and generates the files that depend on it (`Shared/BuildConfig.generated.swift`,
@@ -174,11 +184,14 @@ runner has no UI session, so signing against the login keychain fails with
 ```
 App/          the app: entry point, window/scene shells, settings views
 Widget/       widget definitions, timelines, views, configuration intents
-Shared/       models, config, palette, shared UI — compiled into both targets
+WatchApp/     watch companion: paged wind/forecast/webcam screens, config receiver
+WatchWidget/  watch complications: wind + direction, temperature
+Shared/       models, config, palette, shared UI — compiled into every target
 scripts/      configure, release build, CI secrets, local config sync
 entitlements/ generated per platform (gitignored)
 local-config/ this machine's real config and build identity (gitignored)
-project.yml   xcodegen definition — 2 multiplatform targets: app + widget
+project.yml   xcodegen definition — 2 multiplatform targets (app + widget)
+              plus 2 watchOS targets (companion app + complications)
 ```
 
 Platform differences are `#if os(macOS)` in the source, not separate targets:

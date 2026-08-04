@@ -52,6 +52,13 @@ struct ConfigSettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
+                #if os(iOS)
+                Text("A paired Apple Watch gets this config automatically — including Grafana tokens, so the watch can fetch on its own. Open the watch app once after installing it for the first sync to land.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                #endif
+
                 GroupBox {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(current.summary)
