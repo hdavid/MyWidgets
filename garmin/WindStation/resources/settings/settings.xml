@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings>
+    <setting propertyKey="@Properties.tokenMoutiers" title="@Strings.SettingTokenMoutiers">
+        <settingConfig type="alphaNumeric"/>
+    </setting>
+    <setting propertyKey="@Properties.tokenBernerie" title="@Strings.SettingTokenBernerie">
+        <settingConfig type="alphaNumeric"/>
+    </setting>
+</settings>

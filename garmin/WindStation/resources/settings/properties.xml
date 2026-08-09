@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Stations (hosts, queries, calibration) are baked into source/WindData.mc;
+     only the per-station Grafana service-account tokens are user settings,
+     entered via Garmin Connect on the paired phone. -->
+<properties>
+    <property id="tokenMoutiers" type="string"></property>
+    <property id="tokenBernerie" type="string"></property>
+</properties>

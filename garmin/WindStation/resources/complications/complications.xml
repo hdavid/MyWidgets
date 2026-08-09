@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- One complication per station (ids match WindData.STATIONS indexes),
+     published as "12.3kn NW" strings. Public so Face It / CIQ watch faces
+     can subscribe. -->
+<resources>
+    <complications>
+        <complication id="0" access="public"
+                      longLabel="@Strings.CompLongMoutiers"
+                      shortLabel="@Strings.CompShortMoutiers"
+                      icon="@Drawables.ComplicationIcon"
+                      glancePreview="true">
+            <faceIt defaultText="@Strings.CompLongMoutiers"/>
+        </complication>
+        <complication id="1" access="public"
+                      longLabel="@Strings.CompLongBernerie"
+                      shortLabel="@Strings.CompShortBernerie"
+                      icon="@Drawables.ComplicationIcon">
+            <faceIt defaultText="@Strings.CompLongBernerie"/>
+        </complication>
+    </complications>
+</resources>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<strings>
+    <string id="AppName">Station Wind</string>
+    <string id="SettingTokenMoutiers">Moutiers Grafana token</string>
+    <string id="SettingTokenBernerie">Bernerie Grafana token</string>
+    <string id="CompLongMoutiers">Moutiers wind</string>
+    <string id="CompShortMoutiers">MOU</string>
+    <string id="CompLongBernerie">Bernerie wind</string>
+    <string id="CompShortBernerie">BER</string>
+</strings>
