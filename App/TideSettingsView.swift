@@ -77,7 +77,7 @@ struct TideSettingsView: View {
                         .disabled(calibrating != nil)
                 }
             }
-            Text("Height correction h' = scale·h + bias. “Compute” reads a month of the maree.info tide table (one manual visit, four page views) and fits the correction against it; empty means the raw harmonic prediction.")
+            Text("Height correction h' = scale·h + bias. “Compute” reads the week shown on the maree.info page (one manual page view — a week spans most of a spring/neap arc) and fits the correction against it; empty means the raw harmonic prediction.")
                 .font(.caption2).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 

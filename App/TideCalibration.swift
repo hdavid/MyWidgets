@@ -35,37 +35,28 @@ enum TideCalibration {
         guard let port = TidePorts.port(location.port) else { throw CalibrationError.noPort }
         guard let base = location.pageURL else { throw CalibrationError.fetchFailed }
 
-        // A month of extremes: the page shows 7 days, so four weekly views
-        // (the documented ?d= parameter), politely spaced. ~120 extremes
-        // pins the fit across a full spring/neap cycle.
-        let dayFmt = DateFormatter()
-        dayFmt.dateFormat = "yyyyMMdd"
-        dayFmt.timeZone = TimeZone(identifier: "Europe/Paris")
-        var table: [(date: Date, height: Double)] = []
-        for week in 0..<4 {
-            let d = dayFmt.string(from: Date().addingTimeInterval(Double(week) * 7 * 86400))
-            guard let url = URL(string: base.absoluteString + "?d=\(d)") else { continue }
-            var req = URLRequest(url: url)
-            req.timeoutInterval = 20
-            req.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
-                         forHTTPHeaderField: "User-Agent")
-            guard let (data, resp) = try? await URLSession.shared.data(for: req),
-                  (resp as? HTTPURLResponse)?.statusCode == 200,
-                  let html = String(data: data, encoding: .utf8)
-            else {
-                if week == 0 { throw CalibrationError.fetchFailed }
-                break
-            }
-            table += (try? parse(html)) ?? []
-            if week < 3 { try? await Task.sleep(for: .seconds(1)) }
-        }
+        // One view of the page a click opens: 7 days ≈ 27 extremes. A week
+        // spans most of a spring/neap arc, which conditions the fit well; the
+        // site serves only the current week, so more isn't available anyway.
+        var req = URLRequest(url: base)
+        req.timeoutInterval = 20
+        req.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
+                     forHTTPHeaderField: "User-Agent")
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let html = String(data: data, encoding: .utf8)
+        else { throw CalibrationError.fetchFailed }
+        let table = try parse(html)
         guard table.count >= 8 else { throw CalibrationError.parseFailed }
 
         // Synthesize the port's raw extremes (datum only, no correction) over
         // the table's span, then pair by time proximity.
         let raw = TideScale(offset: port.datum, scale: 1, bias: 0)
-        let span = (table.map(\.date).min()! - 6 * 3600)
-            ... (table.map(\.date).max()! + 6 * 3600)
+        let dates = table.map(\.date)
+        guard let first = dates.min(), let last = dates.max() else {
+            throw CalibrationError.parseFailed
+        }
+        let span = first.addingTimeInterval(-6 * 3600) ... last.addingTimeInterval(6 * 3600)
         let synth = TideModel.extremes(port.harmonics, mapping: raw, brest: nil, in: span)
 
         var pairs: [(mine: Double, ref: Double)] = []
@@ -95,12 +86,15 @@ enum TideCalibration {
 
     // MARK: Table parsing
 
-    /// The visible day rows: each carries its date (`?d=YYYYMMDD…`), a UTC
-    /// offset in the row's `title`, a times cell and a heights cell in
-    /// matching order.
+    /// The visible day rows. Each row's `?d=YYYYMMDDN` link encodes the
+    /// PAGE's base date plus the row index N — the trailing digit is not part
+    /// of the date, it must be ADDED as days (decoding it as a date puts the
+    /// whole week on day one and garbles the fit; found the hard way).
+    /// The row's `title` carries the UTC offset; times and heights cells
+    /// match up in order.
     static func parse(_ html: String) throws -> [(date: Date, height: Double)] {
         let rowPattern = try NSRegularExpression(
-            pattern: #"id="MareeJours_\d+" title="UTC([+-]\d+)".*?\?d=(\d{8})\d.*?<td>(.*?)</td><td>(.*?)</td>"#,
+            pattern: #"id="MareeJours_\d+" title="UTC([+-]\d+)".*?\?d=(\d{8})(\d+)'\);.*?<td>(.*?)</td><td>(.*?)</td>"#,
             options: [.dotMatchesLineSeparators])
         let ns = html as NSString
         var out: [(Date, Double)] = []
@@ -111,9 +105,11 @@ enum TideCalibration {
             guard let utc = Int(ns.substring(with: m.range(at: 1))),
                   let tz = TimeZone(secondsFromGMT: utc * 3600) else { continue }
             dayFmt.timeZone = tz
-            guard let day = dayFmt.date(from: ns.substring(with: m.range(at: 2))) else { continue }
-            let times = matches(#"(\d\d)h(\d\d)"#, in: ns.substring(with: m.range(at: 3)))
-            let heights = matches(#"([\d,]+)m"#, in: ns.substring(with: m.range(at: 4)))
+            guard let base = dayFmt.date(from: ns.substring(with: m.range(at: 2))),
+                  let index = Int(ns.substring(with: m.range(at: 3))) else { continue }
+            let day = base.addingTimeInterval(TimeInterval(index) * 86400)
+            let times = matches(#"(\d\d)h(\d\d)"#, in: ns.substring(with: m.range(at: 4)))
+            let heights = matches(#"([\d,]+)m"#, in: ns.substring(with: m.range(at: 5)))
             guard times.count == heights.count else { continue }
             for (t, h) in zip(times, heights) {
                 guard let hour = Int(t[0]), let minute = Int(t[1]),
