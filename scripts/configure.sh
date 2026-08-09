@@ -140,21 +140,21 @@ fi
 # NOTE this puts local-config/ — including any Grafana token — inside the built
 # app. Fine for a local debug build on your own device; it is why BundledConfig/
 # is gitignored and why this only happens with *_APP_GROUPS=no.
-# The full config (endpoints, read-only Grafana tokens, tide thresholds) is
-# baked into every build so a fresh install on any device works with zero
-# setup. BundledConfig/ and local-config/ are both gitignored; the tokens are
-# Viewer-only service accounts. ConfigStore still prefers the App Group copy,
-# so in-app edits keep winning over the baked defaults.
+# User config (endpoints, tokens, thresholds) is NOT baked into the bundle:
+# it lives in the App Group and moves between devices via export/import and
+# the watch push. Only when App Groups are unavailable (free-team iOS builds)
+# does the widget need a bundled copy to read anything at all.
 rm -rf BundledConfig
 mkdir -p BundledConfig   # xcodegen needs the folder to exist even when empty
-if [ -d local-config ]; then
+if [ "$IOS_APP_GROUPS" != yes ] && [ -d local-config ]; then
     for f in grafana.json webcams.json windguru.json accounts.json tide.json; do
         [ -f "local-config/$f" ] && cp "local-config/$f" "BundledConfig/$f"
     done
     echo "    bundling config for the widget: $(ls BundledConfig 2>/dev/null | tr '\n' ' ')"
 fi
-# Static data riding the same bundle: the tide-port catalog (extracted from
-# the OpenCPN/XTide harmonic files) and Brest's constituents (coefficient).
+# Static data (not config) always rides the bundle: the tide-port catalog
+# (extracted from the OpenCPN/XTide harmonic files) and Brest's constituents
+# (coefficient) — tide synthesis needs these offline on a fresh install.
 cp data/tideports.json data/tidebrest.json BundledConfig/ 2>/dev/null || true
 
 # xcodegen expands ${VAR} in project.yml from the environment.
