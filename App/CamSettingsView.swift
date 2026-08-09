@@ -31,10 +31,14 @@ struct CamSettingsView: View {
                     },
                     detail: { spec in
                         VStack(alignment: .leading, spacing: 5) {
-                            TextField("Image URL (https://…/latest.jpg)", text: spec.imageURL)
-                                .font(.system(.caption, design: .monospaced))
-                            TextField("Page URL opened on click", text: spec.pageURL)
-                                .font(.system(.caption, design: .monospaced))
+                            LabeledField(title: "Image URL") {
+                                TextField("https://…/latest.jpg — re-fetched on the interval", text: spec.imageURL)
+                                    .font(.system(.caption, design: .monospaced))
+                            }
+                            LabeledField(title: "Click opens") {
+                                TextField("page opened when the widget is clicked", text: spec.pageURL)
+                                    .font(.system(.caption, design: .monospaced))
+                            }
                             // The watch pairs with an iPhone only — hide everywhere else.
                             #if os(iOS)
                             if UIDevice.current.userInterfaceIdiom == .phone {
