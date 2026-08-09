@@ -88,6 +88,15 @@ struct TideChart: View {
             ctx.fill(fill, with: .color(Pal.chart.opacity(0.14)))
             ctx.stroke(line, with: .color(Pal.chart), lineWidth: 1.8)
 
+            // Labels already placed, so later ones can dodge them.
+            var placed: [CGRect] = []
+            func claim(_ center: CGPoint, _ text: String, size fontSize: CGFloat) -> CGRect {
+                let w = CGFloat(text.count) * fontSize * 0.62 + 4
+                let r = CGRect(x: center.x - w / 2, y: center.y - 6, width: w, height: 12)
+                placed.append(r)
+                return r
+            }
+
             // Threshold lines, dashed, height tag at the right edge; on the
             // today chart every crossing is labelled on the line itself,
             // rising above with "↑", falling below with "↓".
@@ -106,12 +115,13 @@ struct TideChart: View {
                     for c in crossings where c.threshold == threshold {
                         let cx = x(c.date)
                         guard cx > 14, cx < size.width - 20 else { continue }
-                        let label = Text("\(c.rising ? "↑" : "↓")\(TideText.hm(c.date))")
+                        let text = "\(c.rising ? "↑" : "↓")\(TideText.hm(c.date))"
+                        let at = CGPoint(x: cx, y: ty + (c.rising ? 7 : -7))
+                        _ = claim(at, text, size: 8)
+                        let label = Text(text)
                             .font(.system(size: 8, weight: .semibold))
                             .foregroundColor(Pal.green)
-                        ctx.draw(ctx.resolve(label),
-                                 at: CGPoint(x: cx, y: ty + (c.rising ? 7 : -7)),
-                                 anchor: .center)
+                        ctx.draw(ctx.resolve(label), at: at, anchor: .center)
                     }
                 }
             }
@@ -130,6 +140,7 @@ struct TideChart: View {
                     .foregroundColor(e.isHigh ? .primary : Pal.gray)
                 let py = e.isHigh ? y(e.height) - 8 : y(e.height) + 8
                 let ax = min(max(px, 22), size.width - 22)
+                _ = claim(CGPoint(x: ax, y: py), label, size: 8.5)
                 ctx.draw(ctx.resolve(text), at: CGPoint(x: ax, y: py), anchor: .center)
             }
 
@@ -147,13 +158,27 @@ struct TideChart: View {
                         let ny = y(curve[idx])
                         let dot = CGRect(x: nx - 2.5, y: ny - 2.5, width: 5, height: 5)
                         ctx.fill(Path(ellipseIn: dot), with: .color(Pal.red))
-                        let label = Text(curve[idx].formatted(.number.precision(.fractionLength(2))) + "m")
+                        let text = curve[idx].formatted(.number.precision(.fractionLength(2))) + "m"
+                        let label = Text(text)
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundColor(Pal.red)
+                        // Try beside the dot first, then above/below, on the
+                        // side away from the edge — first spot free of other
+                        // labels wins.
                         let left = nx > size.width * 0.8
-                        ctx.draw(ctx.resolve(label),
-                                 at: CGPoint(x: left ? nx - 5 : nx + 5, y: ny - 8),
-                                 anchor: left ? .trailing : .leading)
+                        let dx: CGFloat = left ? -20 : 20
+                        let candidates = [
+                            CGPoint(x: nx + dx, y: ny - 8),
+                            CGPoint(x: nx + dx, y: ny + 9),
+                            CGPoint(x: nx + dx, y: ny - 20),
+                            CGPoint(x: nx + dx, y: ny + 21),
+                        ]
+                        let w = CGFloat(text.count) * 9 * 0.62 + 4
+                        let spot = candidates.first { c in
+                            let r = CGRect(x: c.x - w / 2, y: c.y - 6, width: w, height: 12)
+                            return !placed.contains { $0.intersects(r) }
+                        } ?? candidates[0]
+                        ctx.draw(ctx.resolve(label), at: spot, anchor: .center)
                     }
                 }
             }
