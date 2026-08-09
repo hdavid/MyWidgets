@@ -7,4 +7,6 @@
     <string id="CompShortMoutiers">MOU</string>
     <string id="CompLongBernerie">Bernerie wind</string>
     <string id="CompShortBernerie">BER</string>
+    <string id="CompLongTide">Tide Pornic</string>
+    <string id="CompShortTide">TIDE</string>
 </strings>

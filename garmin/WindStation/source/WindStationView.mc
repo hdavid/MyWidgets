@@ -1,3 +1,4 @@
+import Toybox.Application;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.Math;
@@ -5,13 +6,13 @@ import Toybox.Time;
 import Toybox.Time.Gregorian;
 import Toybox.WatchUi;
 
-// Full widget view, one station per page — mirrors the iOS medium widget
-// minus watts/dew/humidity: compass rose with direction needle, big average,
-// gust, 1h max, temperature, pressure with 3h trend arrow (Moutiers only),
-// 1h wind sparkline, and the measurement time. SELECT or tap flips stations.
+// Full widget view. SELECT or tap cycles pages: one wind page per station
+// (compass rose, big average, gust, temp, pressure trend, sparkline), then
+// one tide page per location (TidePage — the Apple watch tide page).
 class WindStationView extends WatchUi.View {
 
     var _station as Lang.Number = 0;
+    var _tideDay as TidePage.Day or Null = null;
     var _snap as Lang.Dictionary or Null = null;
     var _error as Lang.String or Null = null;
     var _loading as Lang.Boolean = false;
@@ -22,16 +23,29 @@ class WindStationView extends WatchUi.View {
     }
 
     function onShow() as Void {
+        (Application.getApp() as WindStationApp).publishTide();
         _refresh();
+    }
+
+    function pageCount() as Lang.Number {
+        return WindData.STATIONS.size() + TideConstants.THRESHOLDS.size();
     }
 
     function nextStation() as Void {
-        _station = (_station + 1) % WindData.STATIONS.size();
-        _snap = WindData.stored(_station);
-        _refresh();
+        _station = (_station + 1) % pageCount();
+        if (_station < WindData.STATIONS.size()) {
+            _snap = WindData.stored(_station);
+            _refresh();
+        } else {
+            WatchUi.requestUpdate();
+        }
     }
 
     function _refresh() as Void {
+        if (_station >= WindData.STATIONS.size()) {
+            WatchUi.requestUpdate();
+            return;
+        }
         _loading = true;
         _error = null;
         WindData.request(_station, method(:onWind), true);
@@ -57,6 +71,15 @@ class WindStationView extends WatchUi.View {
     }
 
     function onUpdate(dc as Graphics.Dc) as Void {
+        if (_station >= WindData.STATIONS.size()) {
+            if (_tideDay == null || (_tideDay as TidePage.Day).stale()) {
+                _tideDay = new TidePage.Day();
+            }
+            var i = _station - WindData.STATIONS.size();
+            TidePage.draw(dc, _tideDay, i == 0 ? "Les Moutiers" : "La Bernerie",
+                          TideConstants.THRESHOLDS[i]);
+            return;
+        }
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
         dc.clear();
         var w = dc.getWidth();

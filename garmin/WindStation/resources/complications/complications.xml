@@ -17,5 +17,11 @@
                       icon="@Drawables.ComplicationIcon">
             <faceIt defaultText="@Strings.CompLongBernerie"/>
         </complication>
+        <complication id="2" access="public"
+                      longLabel="@Strings.CompLongTide"
+                      shortLabel="@Strings.CompShortTide"
+                      icon="@Drawables.ComplicationIcon">
+            <faceIt defaultText="@Strings.CompLongTide"/>
+        </complication>
     </complications>
 </resources>

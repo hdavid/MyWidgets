@@ -18,6 +18,17 @@ class WindStationApp extends Application.AppBase {
         }
     }
 
+    // Tide needs no network — recompute and republish whenever we run.
+    // NOT called from onStart: updateComplication traps with Out of Bounds
+    // before the app is fully started, so callers are the view (onShow) and
+    // onBackgroundData, both safely later.
+    function publishTide() as Void {
+        if (!(Toybox has :Complications)) { return; }
+        Toybox.Complications.updateComplication(2, {
+            :value => TidePage.complicationValue()
+        });
+    }
+
     function getInitialView() {
         var view = new WindStationView();
         return [view, new WindStationDelegate(view)];
@@ -36,6 +47,7 @@ class WindStationApp extends Application.AppBase {
     // persist them (views open instantly with fresh data) and update the
     // watch-face complications.
     function onBackgroundData(data) as Void {
+        publishTide();
         if (!(data instanceof Lang.Dictionary)) { return; }
         for (var i = 0; i < WindData.STATIONS.size(); i++) {
             var snap = data[i];
