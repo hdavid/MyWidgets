@@ -17,7 +17,7 @@ struct TideSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Tide").font(.headline)
-                Text("Curve, high/low times and the French coefficient, computed on-device from windguru's harmonic constituents — no network after the first fetch. “maree.info id” only sets the page a click opens. Thresholds draw one line each; the first is the primary one on the compact faces.")
+                Text("Curve, high/low times and the French coefficient, computed on-device from the bundled harmonic port catalog — no network at all. “maree.info id” only sets the page a click opens. Thresholds draw one line each; the first is the primary one on the compact faces.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -27,8 +27,8 @@ struct TideSettingsView: View {
                     addLabel: "Add location",
                     newItem: {
                         TideLocation(id: UUID().uuidString, title: "New location",
-                                     windguruSpot: 67620, mareeInfoId: 119,
-                                     tideOffset: 3.78, thresholds: [3.5])
+                                     port: "PORNIC, France",
+                                     mareeInfoId: 119, thresholds: [3.5])
                     },
                     header: { loc in
                         TextField("Name shown as the widget heading", text: loc.title)
@@ -57,16 +57,19 @@ struct TideSettingsView: View {
 
     private func locationFields(_ loc: Binding<TideLocation>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            LabeledField(title: "Windguru spot id") {
-                TextField("67620", value: loc.windguruSpot, format: .number.grouping(.never))
-            }
+            TidePortPicker(selection: loc.port)
             LabeledField(title: "maree.info id") {
                 TextField("119", value: loc.mareeInfoId, format: .number.grouping(.never))
             }
-            LabeledField(title: "Table offset (m)") {
-                TextField("3.78", value: loc.tideOffset, format: .number)
+            HStack(spacing: 8) {
+                LabeledField(title: "Calibration") {
+                    TextField("scale", value: loc.heightScale, format: .number)
+                        .frame(width: 64)
+                }
+                TextField("bias m", value: loc.heightBias, format: .number)
+                    .frame(width: 64)
             }
-            Text("Offset from windguru's mean-sea-level heights to the printed tide table — same calibration as the forecast widget's tide row.")
+            Text("Optional height correction h' = scale·h + bias, fitted against maree.info's table for the port. Leave empty for the raw harmonic prediction.")
                 .font(.caption2).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -109,5 +112,49 @@ struct TideSettingsView: View {
         statusColor = .secondary
         WidgetCenter.shared.reloadTimelines(ofKind: "TideToday")
         WidgetCenter.shared.reloadTimelines(ofKind: "TideDays")
+    }
+}
+
+/// Search-and-pick a port from the bundled harmonic catalog (~1500 ports).
+/// Results sort by distance to the currently selected port when one is set,
+/// so nearby alternatives surface first; otherwise by name match.
+struct TidePortPicker: View {
+    @Binding var selection: String?
+    @State private var query = ""
+    @State private var searching = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            LabeledField(title: "Port") {
+                HStack(spacing: 6) {
+                    Text(selection ?? "none — pick one")
+                        .font(.caption)
+                        .foregroundStyle(selection == nil ? .secondary : .primary)
+                        .lineLimit(1)
+                    Button(searching ? "Done" : "Change") { searching.toggle() }
+                        .font(.caption)
+                }
+            }
+            if searching {
+                TextField("Search port (e.g. Pornic)", text: $query)
+                let near = TidePorts.port(selection).flatMap { p in
+                    p.lon.flatMap { lon in p.lat.map { (lon: lon, lat: $0) } }
+                }
+                ForEach(TidePorts.names(matching: query, near: near).prefix(8), id: \.self) { name in
+                    Button {
+                        selection = name
+                        searching = false
+                        query = ""
+                    } label: {
+                        HStack {
+                            Text(name).font(.caption).lineLimit(1)
+                            Spacer()
+                            if name == selection { Image(systemName: "checkmark") }
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+        }
     }
 }

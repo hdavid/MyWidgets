@@ -39,13 +39,20 @@ enum TideModel {
 
     // MARK: Constituents cache
 
-    /// Local + Brest constituents, fetching whichever is missing. Returns nil
-    /// for the local set only if it was never cached and the network failed.
+    /// Local + Brest constituents. Port-based locations read the bundled
+    /// catalog (no network, ever); legacy windguru locations fetch once and
+    /// cache. Brest (for the coefficient) is bundled too.
     static func harmonics(for location: TideLocation) async
         -> (local: TideHarmonics?, brest: TideHarmonics?) {
-        async let local = cached(spot: location.windguruSpot, key: String(location.windguruSpot))
-        async let brest = cached(spot: brestSpot, key: brestCacheKey)
-        return await (local, brest)
+        let brest = TidePorts.brest
+        if let port = TidePorts.port(location.port) {
+            return (port.harmonics, brest ?? TideStore.load(for: brestCacheKey))
+        }
+        guard let spot = location.windguruSpot else { return (nil, brest) }
+        async let local = cached(spot: spot, key: String(spot))
+        if let brest { return (await local, brest) }
+        async let fetched = cached(spot: brestSpot, key: brestCacheKey)
+        return await (local, fetched)
     }
 
     private static func cached(spot: Int, key: String) async -> TideHarmonics? {
@@ -59,10 +66,10 @@ enum TideModel {
 
     /// High/low waters in `range`, on the table scale, coefficients attached
     /// to the highs when Brest constituents are in hand.
-    static func extremes(_ tide: TideHarmonics, offset: Double, brest: TideHarmonics?,
+    static func extremes(_ tide: TideHarmonics, mapping: TideScale, brest: TideHarmonics?,
                          in range: ClosedRange<Date>) -> [TideExtreme] {
         var out = rawExtremes(of: { Tide.height(tide, at: $0) }, in: range).map {
-            TideExtreme(date: $0.date, height: $0.value / 100 + offset, isHigh: $0.isHigh)
+            TideExtreme(date: $0.date, height: mapping.table($0.value), isHigh: $0.isHigh)
         }
         guard let brest else { return out }
 
@@ -132,10 +139,10 @@ enum TideModel {
         var cycleHigh: Double { max(previous.height, next.height) }
     }
 
-    static func status(_ tide: TideHarmonics, offset: Double, brest: TideHarmonics?,
+    static func status(_ tide: TideHarmonics, mapping: TideScale, brest: TideHarmonics?,
                        thresholds: [Double], at date: Date) -> Status? {
         let window = date.addingTimeInterval(-15 * 3600) ... date.addingTimeInterval(15 * 3600)
-        let ext = extremes(tide, offset: offset, brest: brest, in: window)
+        let ext = extremes(tide, mapping: mapping, brest: brest, in: window)
         guard let prev = ext.last(where: { $0.date <= date }),
               let next = ext.first(where: { $0.date > date }) else { return nil }
         let f = date.timeIntervalSince(prev.date) / next.date.timeIntervalSince(prev.date)
@@ -146,7 +153,7 @@ enum TideModel {
             ?? (next.isHigh ? prev.coefficient : next.coefficient)
         return Status(
             date: date,
-            height: Tide.height(tide, at: date) / 100 + offset,
+            height: mapping.table(Tide.height(tide, at: date)),
             rising: next.isHigh,
             phase: phase,
             coefficient: coef,
@@ -154,32 +161,32 @@ enum TideModel {
             next: next,
             thresholds: thresholds,
             crossings: thresholds.compactMap { t in
-                crossing(tide, offset: offset, of: t, after: date).map { (t, $0.date, $0.rising) }
+                crossing(tide, mapping: mapping, of: t, after: date).map { (t, $0.date, $0.rising) }
             })
     }
 
     /// First time `height` crosses `threshold` after `date` (within 24 h),
     /// by 5-minute sampling and linear interpolation.
-    static func crossing(_ tide: TideHarmonics, offset: Double, of threshold: Double,
+    static func crossing(_ tide: TideHarmonics, mapping: TideScale, of threshold: Double,
                          after date: Date) -> (date: Date, rising: Bool)? {
-        crossings(tide, offset: offset, of: threshold,
+        crossings(tide, mapping: mapping, of: threshold,
                   in: date...date.addingTimeInterval(24 * 3600)).first
             .map { ($0.date, $0.rising) }
     }
 
     /// Every crossing of `threshold` inside `range` — the widget chart labels
     /// each one on the threshold line.
-    static func crossings(_ tide: TideHarmonics, offset: Double, of threshold: Double,
+    static func crossings(_ tide: TideHarmonics, mapping: TideScale, of threshold: Double,
                           in range: ClosedRange<Date>)
         -> [(threshold: Double, date: Date, rising: Bool)] {
         let step = 300.0
         let n = Int(range.upperBound.timeIntervalSince(range.lowerBound) / step)
         guard n > 1 else { return [] }
         var out: [(Double, Date, Bool)] = []
-        var prev = Tide.height(tide, at: range.lowerBound) / 100 + offset - threshold
+        var prev = mapping.table(Tide.height(tide, at: range.lowerBound)) - threshold
         for i in 1...n {
             let t = range.lowerBound.addingTimeInterval(Double(i) * step)
-            let cur = Tide.height(tide, at: t) / 100 + offset - threshold
+            let cur = mapping.table(Tide.height(tide, at: t)) - threshold
             if prev != 0, (prev < 0) != (cur < 0) {
                 let f = abs(prev) / (abs(prev) + abs(cur))
                 out.append((threshold, t.addingTimeInterval((f - 1) * step), cur > prev))
@@ -193,11 +200,11 @@ enum TideModel {
 
     /// Table-scale heights sampled every `step` seconds across `range`,
     /// for the widget's Canvas.
-    static func curve(_ tide: TideHarmonics, offset: Double,
+    static func curve(_ tide: TideHarmonics, mapping: TideScale,
                       in range: ClosedRange<Date>, step: TimeInterval = 600) -> [Double] {
         let n = Int(range.upperBound.timeIntervalSince(range.lowerBound) / step)
         return (0...max(1, n)).map {
-            Tide.height(tide, at: range.lowerBound.addingTimeInterval(Double($0) * step)) / 100 + offset
+            mapping.table(Tide.height(tide, at: range.lowerBound.addingTimeInterval(Double($0) * step)))
         }
     }
 }

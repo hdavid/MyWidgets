@@ -68,7 +68,7 @@ struct TideProvider: AppIntentTimelineProvider {
     private func makeEntry(_ locationID: String?, at date: Date) async -> TideEntry {
         guard let loc = TideConfig.location(locationID) else { return .placeholder(days: days) }
         let (local, brest) = await TideModel.harmonics(for: loc)
-        guard let local else {
+        guard let local, let mapping = loc.heightMapping else {
             return TideEntry(date: date, start: date, step: 600, curve: [], extremes: [],
                              thresholds: loc.thresholds, crossings: [], status: nil,
                              title: loc.title, url: loc.pageURL, days: days, empty: true)
@@ -81,13 +81,13 @@ struct TideProvider: AppIntentTimelineProvider {
             date: date,
             start: start,
             step: 600,
-            curve: TideModel.curve(local, offset: loc.tideOffset, in: range),
-            extremes: TideModel.extremes(local, offset: loc.tideOffset, brest: brest, in: range),
+            curve: TideModel.curve(local, mapping: mapping, in: range),
+            extremes: TideModel.extremes(local, mapping: mapping, brest: brest, in: range),
             thresholds: loc.thresholds,
             crossings: loc.thresholds.flatMap {
-                TideModel.crossings(local, offset: loc.tideOffset, of: $0, in: range)
+                TideModel.crossings(local, mapping: mapping, of: $0, in: range)
             },
-            status: TideModel.status(local, offset: loc.tideOffset, brest: brest,
+            status: TideModel.status(local, mapping: mapping, brest: brest,
                                      thresholds: loc.thresholds, at: date),
             title: loc.title,
             url: loc.pageURL,

@@ -59,7 +59,7 @@ struct WatchTidePage: View {
 
     private func compute() async {
         let (local, brest) = await TideModel.harmonics(for: location)
-        guard let local else {
+        guard let local, let mapping = location.heightMapping else {
             missing = true
             return
         }
@@ -71,11 +71,11 @@ struct WatchTidePage: View {
         day = DayData(
             date: now,
             start: start,
-            curve: TideModel.curve(local, offset: location.tideOffset, in: range),
-            extremes: TideModel.extremes(local, offset: location.tideOffset,
+            curve: TideModel.curve(local, mapping: mapping, in: range),
+            extremes: TideModel.extremes(local, mapping: mapping,
                                          brest: brest, in: range),
             crossings: location.thresholds.flatMap {
-                TideModel.crossings(local, offset: location.tideOffset, of: $0, in: range)
+                TideModel.crossings(local, mapping: mapping, of: $0, in: range)
             })
         missing = false
     }

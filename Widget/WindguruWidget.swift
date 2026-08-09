@@ -1,6 +1,24 @@
 import WidgetKit
 import SwiftUI
 
+/// The forecast table's tide row now rides the tide config: the first tide
+/// location's port supplies the constituents and its first threshold the
+/// green level, so the calibration lives in one place (the Tide tab).
+enum ForecastTide {
+    static func harmonics() -> TideHarmonics? {
+        guard let loc = TideConfig.load().first else { return nil }
+        return TidePorts.port(loc.port)?.harmonics
+    }
+
+    /// First threshold in cm above MSL — the scale the tide row compares in.
+    static func greenAboveMSL() -> Double? {
+        guard let loc = TideConfig.load().first,
+              let mapping = loc.heightMapping,
+              let threshold = loc.thresholds.first else { return nil }
+        return mapping.cmMSL(fromTable: threshold)
+    }
+}
+
 // MARK: - Timeline
 
 struct ForecastEntry: TimelineEntry {
@@ -19,7 +37,7 @@ struct ForecastProvider: AppIntentTimelineProvider {
         return ForecastEntry(date: Date(),
                              forecast: spot.flatMap { ForecastStore.load(for: $0.id) },
                              stale: false, spot: spot,
-                             tide: spot.flatMap { TideStore.load(for: $0.id) })
+                             tide: ForecastTide.harmonics())
     }
 
     func snapshot(for configuration: SelectSpotIntent, in context: Context) async -> ForecastEntry {
@@ -44,7 +62,7 @@ struct ForecastProvider: AppIntentTimelineProvider {
         return ForecastEntry(date: Date(),
                              forecast: fresh ?? ForecastStore.load(for: spot.id),
                              stale: fresh == nil, spot: spot,
-                             tide: TideStore.load(for: spot.id))
+                             tide: ForecastTide.harmonics())
     }
 }
 
@@ -622,7 +640,7 @@ struct ForecastWidgetView: View {
                                  m: .init(labelSize: 10, valueSize: 12, cellHeight: 14,
                                           arrowSize: 10),
                                  headerSize: 13, showSky: true, tide: entry.tide,
-                                 greenAbove: spot.greenAboveMSL, lineGap: 5)
+                                 greenAbove: ForecastTide.greenAboveMSL(), lineGap: 5)
                 default:
                     // Half a day per line, so small still shows one whole day.
                     ForecastGrid(title: spot.heading, forecast: f, stale: entry.stale,

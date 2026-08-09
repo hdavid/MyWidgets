@@ -54,7 +54,8 @@ struct TideComplicationProvider: AppIntentTimelineProvider {
     }
 
     private func entries(_ locationID: String?, count: Int) async -> [TideComplicationEntry] {
-        guard let loc = TideConfig.location(locationID) else { return [] }
+        guard let loc = TideConfig.location(locationID), let mapping = loc.heightMapping
+        else { return [] }
         let (local, brest) = await TideModel.harmonics(for: loc)
         let now = Date()
         return (0..<count).map { i in
@@ -62,7 +63,7 @@ struct TideComplicationProvider: AppIntentTimelineProvider {
             return TideComplicationEntry(
                 date: at,
                 status: local.flatMap {
-                    TideModel.status($0, offset: loc.tideOffset, brest: brest,
+                    TideModel.status($0, mapping: mapping, brest: brest,
                                      thresholds: loc.thresholds, at: at)
                 },
                 title: loc.title,

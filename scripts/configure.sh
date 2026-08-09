@@ -153,6 +153,9 @@ if [ -d local-config ]; then
     done
     echo "    bundling config for the widget: $(ls BundledConfig 2>/dev/null | tr '\n' ' ')"
 fi
+# Static data riding the same bundle: the tide-port catalog (extracted from
+# the OpenCPN/XTide harmonic files) and Brest's constituents (coefficient).
+cp data/tideports.json data/tidebrest.json BundledConfig/ 2>/dev/null || true
 
 # xcodegen expands ${VAR} in project.yml from the environment.
 xcodegen generate >/dev/null
