@@ -16,6 +16,8 @@ struct GrafanaSettingsView: View {
     @State private var busy = false
     /// Last test's values, per source, so each slot can preview what it renders.
     @State private var probes: [String: WindSnapshot] = [:]
+    /// Slot ids with their options row unfolded.
+    @State private var expandedSlots: Set<String> = []
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private var compact: Bool { sizeClass == .compact }
@@ -126,123 +128,109 @@ struct GrafanaSettingsView: View {
 
     // MARK: Slots
 
+    /// The layout is fixed, so the editor is a fixed checklist: one query
+    /// line per place in the widget, options folded behind the chevron.
+    /// Empty query = that place stays empty.
     private func slotsSection(_ source: Binding<GrafanaSource>) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Slots").font(.system(size: 12, weight: .semibold))
-                Spacer()
-                Button {
-                    source.slots.wrappedValue.append(
-                        MetricSlot(role: .chip, query: "SELECT last(value) FROM autogen."))
-                } label: {
-                    Label("Add chip", systemImage: "plus")
-                }
-                .buttonStyle(.borderless)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Queries").font(.system(size: 12, weight: .semibold))
+            ForEach(fixedRows(source), id: \.title) { row in
+                slotRow(row.title, row.slot, in: source)
             }
-
-            ForEach(source.slots) { $slot in
-                slotCard($slot, in: source)
-            }
-
-            Text("Roles other than Chip fill a single place in the layout — if two slots share one, the first enabled slot wins. “Dew spread” colours by how close the value is to the Temperature-scaled slot.")
+            Text("Raw InfluxQL per place. “Dew spread” colours by how close the value is to the Temperature-scaled chip.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        .onAppear { canonicalize(source) }
     }
 
-    private func slotCard(_ slot: Binding<MetricSlot>,
-                          in source: Binding<GrafanaSource>) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            if compact {
-                HStack(spacing: 6) {
-                    enableToggle(slot)
-                    rolePicker(slot)
-                    Spacer(minLength: 0)
-                    deleteButton(slot, in: source)
-                }
-                HStack(spacing: 6) {
-                    TextField("Label", text: slot.label)
-                    TextField("Unit", text: slot.unit).settingsWidth(64)
-                    decimalStepper(slot)
-                }
-            } else {
-                HStack(spacing: 6) {
-                    enableToggle(slot)
-                    rolePicker(slot)
-                    TextField("Label", text: slot.label).settingsWidth(74)
-                    TextField("Unit", text: slot.unit).settingsWidth(54)
-                    decimalStepper(slot)
-                    Spacer(minLength: 0)
-                    deleteButton(slot, in: source)
-                }
+    private struct FixedRow {
+        let title: String
+        let slot: Binding<MetricSlot>
+    }
+
+    /// Slots are kept in canonical order (big number, under it, rose,
+    /// sparkline, then six chips), so rows bind by index.
+    private func fixedRows(_ source: Binding<GrafanaSource>) -> [FixedRow] {
+        guard source.slots.wrappedValue.count >= 10 else { return [] }
+        let titles = ["Big number", "Under it", "Rose °", "Sparkline",
+                      "Chip 1", "Chip 2", "Chip 3", "Chip 4", "Chip 5", "Chip 6"]
+        return titles.indices.map { FixedRow(title: titles[$0], slot: source.slots[$0]) }
+    }
+
+    /// Rebuild the slots array into canonical order, creating empty slots for
+    /// unfilled places and keeping anything unrecognized at the tail so an
+    /// older config never loses data it can't display.
+    private func canonicalize(_ source: Binding<GrafanaSource>) {
+        var pool = source.slots.wrappedValue
+        guard !(pool.count >= 10 && pool[0].role == .primary && pool[1].role == .secondary
+                && pool[2].role == .direction && pool[3].role == .series) else { return }
+        func take(_ role: SlotRole) -> MetricSlot {
+            if let i = pool.firstIndex(where: { $0.role == role }) {
+                return pool.remove(at: i)
             }
+            return MetricSlot(role: role, query: "")
+        }
+        var out = [take(.primary), take(.secondary), take(.direction), take(.series)]
+        for _ in 0..<6 { out.append(take(.chip)) }
+        out += pool   // e.g. an old tertiary slot — preserved, not shown
+        source.slots.wrappedValue = out
+    }
 
-            HStack(spacing: 6) {
-                Picker("", selection: slot.scale) {
-                    ForEach(MetricScale.allCases) { Text($0.label).tag($0) }
-                }
-                .labelsHidden()
-                .settingsWidth(150)
-                .disabled(slot.role.wrappedValue == .series)
-                preview(slot.wrappedValue, in: source.wrappedValue)
-                Spacer(minLength: 0)
-            }
-
-            TextField("SELECT last(value) FROM autogen.measurement", text: slot.query,
-                      axis: .vertical)
-                .font(.system(.caption, design: .monospaced))
-                .lineLimit(1...3)
-
-            if slot.role.wrappedValue != .series {
-                TextField("Trend query — optional, adds a tendency arrow",
-                          text: slot.trendQuery)
+    private func slotRow(_ title: String, _ slot: Binding<MetricSlot>,
+                         in source: Binding<GrafanaSource>) -> some View {
+        let open = expandedSlots.contains(slot.id.wrappedValue)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(title)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .frame(width: 74, alignment: .leading)
+                TextField("empty — not shown", text: slot.query, axis: .vertical)
                     .font(.system(.caption, design: .monospaced))
+                    .lineLimit(1...3)
+                if !slot.query.wrappedValue.isEmpty {
+                    preview(slot.wrappedValue, in: source.wrappedValue)
+                }
+                Button {
+                    if open { expandedSlots.remove(slot.id.wrappedValue) }
+                    else { expandedSlots.insert(slot.id.wrappedValue) }
+                } label: {
+                    Image(systemName: open ? "chevron.down" : "chevron.right")
+                        .font(.caption2)
+                }
+                .buttonStyle(.borderless)
+            }
+            if open {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        TextField("Label", text: slot.label).settingsWidth(74)
+                        TextField("Unit", text: slot.unit).settingsWidth(54)
+                        Stepper(value: slot.decimals, in: 0...3) {
+                            Text("\(slot.decimals.wrappedValue)dp")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        .fixedSize()
+                        if slot.role.wrappedValue != .series {
+                            Picker("", selection: slot.scale) {
+                                ForEach(MetricScale.allCases) { Text($0.label).tag($0) }
+                            }
+                            .labelsHidden()
+                            .settingsWidth(150)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    if slot.role.wrappedValue != .series {
+                        TextField("Trend query — optional, adds a tendency arrow",
+                                  text: slot.trendQuery)
+                            .font(.system(.caption, design: .monospaced))
+                    }
+                }
+                .padding(.leading, 80)
             }
         }
-        .padding(8)
-        .background(Color.primary.opacity(slot.enabled.wrappedValue ? 0.05 : 0.02),
-                    in: RoundedRectangle(cornerRadius: 6))
-        .opacity(slot.enabled.wrappedValue ? 1 : 0.55)
     }
 
-    private func enableToggle(_ slot: Binding<MetricSlot>) -> some View {
-        Toggle("", isOn: slot.enabled)
-            .labelsHidden()
-            .help("Include this metric")
-    }
-
-    private func rolePicker(_ slot: Binding<MetricSlot>) -> some View {
-        Picker("", selection: slot.role) {
-            ForEach(SlotRole.allCases) { Text($0.label).tag($0) }
-        }
-        .labelsHidden()
-        // Capped on a Mac so the row stays aligned; uncapped on a phone, where
-        // 122pt clips the longer role names ("Big number", "Rose (degrees)").
-        .settingsWidth(compact ? .infinity : 122)
-    }
-
-    private func decimalStepper(_ slot: Binding<MetricSlot>) -> some View {
-        Stepper(value: slot.decimals, in: 0...3) {
-            Text("\(slot.decimals.wrappedValue)dp")
-                .font(.caption).foregroundStyle(.secondary)
-        }
-        .fixedSize()
-    }
-
-    private func deleteButton(_ slot: Binding<MetricSlot>,
-                              in source: Binding<GrafanaSource>) -> some View {
-        Button(role: .destructive) {
-            let id = slot.id.wrappedValue
-            source.slots.wrappedValue.removeAll { $0.id == id }
-        } label: {
-            Image(systemName: "trash")
-        }
-        .buttonStyle(.borderless)
-        .disabled(source.slots.wrappedValue.count == 1)
-    }
-
-    /// What the widget would print for this slot, using the last test's values.
     @ViewBuilder
     private func preview(_ slot: MetricSlot, in source: GrafanaSource) -> some View {
         let probe = probes[source.id]
@@ -267,7 +255,12 @@ struct GrafanaSettingsView: View {
         defer { busy = false }
         status = nil
 
-        guard GrafanaConfig.save(sources) else {
+        var trimmed = sources
+        for i in trimmed.indices {
+            trimmed[i].slots.removeAll { $0.query.isEmpty }
+            for j in trimmed[i].slots.indices { trimmed[i].slots[j].enabled = true }
+        }
+        guard GrafanaConfig.save(trimmed) else {
             status = "Could not write the config file."
             statusColor = .red
             return
