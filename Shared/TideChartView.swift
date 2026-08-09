@@ -133,7 +133,8 @@ struct TideChart: View {
                 ctx.draw(ctx.resolve(text), at: CGPoint(x: ax, y: py), anchor: .center)
             }
 
-            // Now.
+            // Now: marker line, dot on the curve, and the current height
+            // beside the dot (side away from the nearest edge).
             if nowMarker {
                 let nx = x(date)
                 if nx >= 0, nx <= size.width {
@@ -143,8 +144,16 @@ struct TideChart: View {
                     ctx.stroke(mark, with: .color(Pal.red.opacity(0.55)), lineWidth: 1)
                     let idx = Int(date.timeIntervalSince(start) / step)
                     if curve.indices.contains(idx) {
-                        let dot = CGRect(x: nx - 2.5, y: y(curve[idx]) - 2.5, width: 5, height: 5)
+                        let ny = y(curve[idx])
+                        let dot = CGRect(x: nx - 2.5, y: ny - 2.5, width: 5, height: 5)
                         ctx.fill(Path(ellipseIn: dot), with: .color(Pal.red))
+                        let label = Text(curve[idx].formatted(.number.precision(.fractionLength(2))) + "m")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(Pal.red)
+                        let left = nx > size.width * 0.8
+                        ctx.draw(ctx.resolve(label),
+                                 at: CGPoint(x: left ? nx - 5 : nx + 5, y: ny - 8),
+                                 anchor: left ? .trailing : .leading)
                     }
                 }
             }
