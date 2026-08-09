@@ -12,6 +12,8 @@ struct MyWidgetsBundle: WidgetBundle {
     var body: some Widget {
         MetricsWidget()
         ForecastWidget()
+        TideTodayWidget()
+        TideDaysWidget()
         WebcamWidget()
         ClaudeUsageWidget()
     }
@@ -19,6 +21,8 @@ struct MyWidgetsBundle: WidgetBundle {
     var body: some Widget {
         MetricsWidget()
         ForecastWidget()
+        TideTodayWidget()
+        TideDaysWidget()
         WebcamWidget()
     }
     #endif

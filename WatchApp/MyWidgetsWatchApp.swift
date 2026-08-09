@@ -25,6 +25,7 @@ final class WatchModel: ObservableObject {
     @Published var sources: [GrafanaSource] = GrafanaConfig.load()
     @Published var spots: [WindguruSpot] = WindguruConfig.load()
     @Published var cams: [CamSpec] = CamsConfig.load()
+    @Published var tides: [TideLocation] = TideConfig.load()
 
     private var observer: NSObjectProtocol?
 
@@ -40,24 +41,40 @@ final class WatchModel: ObservableObject {
         sources = GrafanaConfig.load()
         spots = WindguruConfig.load()
         cams = CamsConfig.load()
+        tides = TideConfig.load()
     }
 }
 
 struct RootView: View {
     @ObservedObject var model: WatchModel
+    /// Page tags are "kind:id" so a complication's widgetURL
+    /// (mywidgets://kind/id) can select its page directly.
+    @State private var selection: String?
 
     var body: some View {
-        TabView {
-            ForEach(model.sources) { source in
+        TabView(selection: $selection) {
+            ForEach(model.sources.filter(\.onWatch)) { source in
                 WatchWindPage(source: source)
+                    .tag(Optional("wind:\(source.id)"))
             }
-            ForEach(model.spots.filter(\.isConfigured)) { spot in
+            ForEach(model.spots.filter { $0.isConfigured && $0.onWatch }) { spot in
                 WatchForecastPage(spot: spot)
+                    .tag(Optional("forecast:\(spot.id)"))
             }
-            ForEach(model.cams.filter(\.isConfigured)) { cam in
+            ForEach(model.tides.filter(\.onWatch)) { location in
+                WatchTidePage(location: location)
+                    .tag(Optional("tide:\(location.id)"))
+            }
+            ForEach(model.cams.filter { $0.isConfigured && $0.onWatch }) { cam in
                 WatchCamPage(cam: cam)
+                    .tag(Optional("cam:\(cam.id)"))
             }
         }
         .tabViewStyle(.verticalPage)
+        .onOpenURL { url in
+            // A complication tap: mywidgets://<kind>/<id>.
+            guard let kind = url.host, !url.lastPathComponent.isEmpty else { return }
+            selection = "\(kind):\(url.lastPathComponent)"
+        }
     }
 }

@@ -7,7 +7,7 @@ import UIKit
 #endif
 
 /// Tab identities, so opening a config file can bring the Config tab forward.
-enum SettingsTab: Hashable { case grafana, windguru, webcams, claude, config }
+enum SettingsTab: Hashable { case grafana, windguru, tide, webcams, claude, config }
 
 /// One app for macOS, iOS and iPadOS. The settings tabs are shared; what differs
 /// is the shell around them (a resizable window plus a menu-bar panel on the Mac,
@@ -102,6 +102,9 @@ struct MainWindowView: View {
             WindguruSettingsView()
                 .tabItem { Label("Windguru", systemImage: "wind") }
                 .tag(SettingsTab.windguru)
+            TideSettingsView()
+                .tabItem { Label("Tide", systemImage: "water.waves") }
+                .tag(SettingsTab.tide)
             CamSettingsView()
                 .tabItem { Label("Webcams", systemImage: "video") }
                 .tag(SettingsTab.webcams)
@@ -121,6 +124,7 @@ struct MainWindowView: View {
         TabView(selection: $selection) {
             phoneTab(GrafanaSettingsView(), "Grafana", "chart.xyaxis.line", .grafana)
             phoneTab(WindguruSettingsView(), "Windguru", "wind", .windguru)
+            phoneTab(TideSettingsView(), "Tide", "water.waves", .tide)
             phoneTab(CamSettingsView(), "Webcams", "video", .webcams)
             phoneTab(ConfigSettingsView(), "Config", "arrow.up.arrow.down.circle", .config)
         }

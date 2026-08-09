@@ -1,0 +1,153 @@
+import SwiftUI
+
+// MARK: - Tide curve chart
+//
+// The one-day / multi-day tide chart the iOS/macOS widgets draw, shared with
+// the watch app's tide page so every platform shows the same picture. The
+// curve, threshold lines with crossing times, extremes labels, day rules and
+// now-marker are all one Canvas — widget-host layout stays one node deep
+// (see the note on ForecastLine about per-view cost).
+struct TideChart: View {
+    /// Curve start and sampling step for mapping index → time.
+    let start: Date
+    let step: TimeInterval
+    let curve: [Double]
+    let extremes: [TideExtreme]
+    let thresholds: [Double]
+    /// Threshold crossings inside the curve range, for the on-line labels.
+    let crossings: [(threshold: Double, date: Date, rising: Bool)]
+    /// Days covered by the curve (1 = today widget layout).
+    let days: Int
+    /// "Now" for the marker.
+    let date: Date
+    /// Show the now-marker (today layouts only).
+    let nowMarker: Bool
+    /// Space reserved for the overlaid header when drawn full-bleed.
+    var topInset: CGFloat = 0
+
+    var body: some View {
+        Canvas { ctx, size in
+            guard curve.count > 1 else { return }
+            let labelTop: CGFloat = topInset + 14   // room for HW time labels
+            let labelBottom: CGFloat = 12           // room for LW time labels
+            let dayBand: CGFloat = days > 1 ? 13 : 0
+            let lo = min(curve.min() ?? 0, thresholds.min() ?? .infinity) - 0.3
+            let hi = max(curve.max() ?? 1, thresholds.max() ?? -.infinity) + 0.3
+            let plotH = size.height - labelTop - labelBottom - dayBand
+            let total = Double(curve.count - 1) * step
+
+            func x(_ d: Date) -> CGFloat {
+                CGFloat(d.timeIntervalSince(start) / total) * size.width
+            }
+            func y(_ h: Double) -> CGFloat {
+                dayBand + labelTop + plotH * CGFloat(1 - (h - lo) / (hi - lo))
+            }
+
+            // Day separators + per-day labels and coefficients.
+            if days > 1 {
+                let cal = Calendar.current
+                let fmt = Date.FormatStyle().weekday(.abbreviated).day()
+                for d in 0..<days {
+                    guard let dayStart = cal.date(byAdding: .day, value: d, to: start)
+                    else { continue }
+                    let xd = x(dayStart)
+                    if d > 0 {
+                        var rule = Path()
+                        rule.move(to: CGPoint(x: xd, y: topInset))
+                        rule.addLine(to: CGPoint(x: xd, y: size.height))
+                        ctx.stroke(rule, with: .color(Pal.gray.opacity(0.25)), lineWidth: 1)
+                    }
+                    let coefs = extremes
+                        .filter { $0.isHigh && cal.isDate($0.date, inSameDayAs: dayStart) }
+                        .compactMap(\.coefficient)
+                    let label = Text(dayStart.formatted(fmt))
+                        .font(.system(size: 9, weight: .semibold)).foregroundColor(Pal.gray)
+                    ctx.draw(ctx.resolve(label), at: CGPoint(x: xd + 3, y: topInset + 6),
+                             anchor: .leading)
+                    if !coefs.isEmpty {
+                        let c = Text(coefs.map(String.init).joined(separator: "·"))
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(coefs.contains { $0 >= 90 } ? Pal.orange : .primary)
+                        let dayW = size.width / CGFloat(days)
+                        ctx.draw(ctx.resolve(c), at: CGPoint(x: xd + dayW - 3, y: topInset + 6),
+                                 anchor: .trailing)
+                    }
+                }
+            }
+
+            // Curve + fill.
+            var line = Path()
+            for (i, h) in curve.enumerated() {
+                let p = CGPoint(x: size.width * CGFloat(i) / CGFloat(curve.count - 1), y: y(h))
+                i == 0 ? line.move(to: p) : line.addLine(to: p)
+            }
+            var fill = line
+            fill.addLine(to: CGPoint(x: size.width, y: size.height))
+            fill.addLine(to: CGPoint(x: 0, y: size.height))
+            fill.closeSubpath()
+            ctx.fill(fill, with: .color(Pal.chart.opacity(0.14)))
+            ctx.stroke(line, with: .color(Pal.chart), lineWidth: 1.8)
+
+            // Threshold lines, dashed, height tag at the right edge; on the
+            // today chart every crossing is labelled on the line itself,
+            // rising above with "↑", falling below with "↓".
+            for threshold in thresholds {
+                let ty = y(threshold)
+                var thr = Path()
+                thr.move(to: CGPoint(x: 0, y: ty))
+                thr.addLine(to: CGPoint(x: size.width, y: ty))
+                ctx.stroke(thr, with: .color(Pal.green.opacity(0.8)),
+                           style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                let tag = Text(threshold.formatted(.number.precision(.fractionLength(1))))
+                    .font(.system(size: 8, weight: .medium)).foregroundColor(Pal.green)
+                ctx.draw(ctx.resolve(tag), at: CGPoint(x: size.width - 2, y: ty - 6), anchor: .trailing)
+
+                if days == 1 {
+                    for c in crossings where c.threshold == threshold {
+                        let cx = x(c.date)
+                        guard cx > 14, cx < size.width - 20 else { continue }
+                        let label = Text("\(c.rising ? "↑" : "↓")\(TideText.hm(c.date))")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundColor(Pal.green)
+                        ctx.draw(ctx.resolve(label),
+                                 at: CGPoint(x: cx, y: ty + (c.rising ? 7 : -7)),
+                                 anchor: .center)
+                    }
+                }
+            }
+
+            // Extremes: time above the highs (with height when there's room),
+            // time below the lows.
+            let dense = days > 2
+            for e in extremes {
+                let px = x(e.date)
+                guard px >= 0, px <= size.width else { continue }
+                let time = TideText.hm(e.date)
+                let label = dense ? time
+                    : "\(time) \(e.height.formatted(.number.precision(.fractionLength(1))))m"
+                let text = Text(label)
+                    .font(.system(size: 8.5, weight: e.isHigh ? .semibold : .regular))
+                    .foregroundColor(e.isHigh ? .primary : Pal.gray)
+                let py = e.isHigh ? y(e.height) - 8 : y(e.height) + 8
+                let ax = min(max(px, 22), size.width - 22)
+                ctx.draw(ctx.resolve(text), at: CGPoint(x: ax, y: py), anchor: .center)
+            }
+
+            // Now.
+            if nowMarker {
+                let nx = x(date)
+                if nx >= 0, nx <= size.width {
+                    var mark = Path()
+                    mark.move(to: CGPoint(x: nx, y: dayBand + labelTop))
+                    mark.addLine(to: CGPoint(x: nx, y: size.height - labelBottom))
+                    ctx.stroke(mark, with: .color(Pal.red.opacity(0.55)), lineWidth: 1)
+                    let idx = Int(date.timeIntervalSince(start) / step)
+                    if curve.indices.contains(idx) {
+                        let dot = CGRect(x: nx - 2.5, y: y(curve[idx]) - 2.5, width: 5, height: 5)
+                        ctx.fill(Path(ellipseIn: dot), with: .color(Pal.red))
+                    }
+                }
+            }
+        }
+    }
+}

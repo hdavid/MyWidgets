@@ -123,3 +123,41 @@ struct SelectSpotIntent: WidgetConfigurationIntent {
     @Parameter(title: "Spot")
     var spot: SpotEntity?
 }
+
+// MARK: - Tide location
+
+struct TideLocationEntity: AppEntity, Identifiable {
+    let id: String
+    let name: String
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation { "Location" }
+    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
+    static var defaultQuery = TideLocationEntityQuery()
+
+    init(_ location: TideLocation) {
+        id = location.id
+        name = location.title
+    }
+}
+
+struct TideLocationEntityQuery: EntityQuery {
+    func entities(for identifiers: [String]) async throws -> [TideLocationEntity] {
+        TideConfig.load().filter { identifiers.contains($0.id) }.map(TideLocationEntity.init)
+    }
+
+    func suggestedEntities() async throws -> [TideLocationEntity] {
+        TideConfig.load().map(TideLocationEntity.init)
+    }
+
+    func defaultResult() async -> TideLocationEntity? {
+        TideConfig.load().first.map(TideLocationEntity.init)
+    }
+}
+
+struct SelectTideLocationIntent: WidgetConfigurationIntent {
+    static var title: LocalizedStringResource = "Tide location"
+    static var description = IntentDescription("Choose which spot's tide this widget shows.")
+
+    @Parameter(title: "Location")
+    var location: TideLocationEntity?
+}

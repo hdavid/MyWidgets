@@ -14,6 +14,8 @@ struct ConfigBundle: Codable {
     var windguru: [WindguruSpot]
     var webcams: [CamSpec]
     var accounts: [AccountSpec]
+    /// Optional so exports from before the tide widgets still decode.
+    var tide: [TideLocation]?
 
     /// Snapshot what's configured right now.
     ///
@@ -34,7 +36,8 @@ struct ConfigBundle: Codable {
                             grafana: sources,
                             windguru: WindguruConfig.load(),
                             webcams: CamsConfig.load(),
-                            accounts: AccountsConfig.load())
+                            accounts: AccountsConfig.load(),
+                            tide: TideConfig.load())
     }
 
     func encoded() throws -> Data {
@@ -72,6 +75,7 @@ struct ConfigBundle: Codable {
         if !windguru.isEmpty { ok = WindguruConfig.save(windguru) && ok }
         if !webcams.isEmpty { ok = CamsConfig.save(webcams) && ok }
         if !accounts.isEmpty { ok = AccountsConfig.save(accounts) && ok }
+        if let tide, !tide.isEmpty { ok = TideConfig.save(tide) && ok }
         return ok
     }
 

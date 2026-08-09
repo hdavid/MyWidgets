@@ -6,6 +6,7 @@ struct WatchWidgetsBundle: WidgetBundle {
     var body: some Widget {
         WindComplication()
         TemperatureComplication()
+        TideComplication()
     }
 }
 
@@ -146,6 +147,8 @@ struct WindComplicationView: View {
                 }
             }
         }
+        // A tap opens the watch app straight on this source's wind page.
+        .widgetURL(entry.source.flatMap { URL(string: "mywidgets://wind/\($0.id)") })
         .containerBackground(for: .widget) { Color.clear }
     }
 
@@ -249,6 +252,8 @@ struct TemperatureComplicationView: View {
                 }
             }
         }
+        // Temperature reads from the same source — its page is the wind page.
+        .widgetURL(entry.source.flatMap { URL(string: "mywidgets://wind/\($0.id)") })
         .containerBackground(for: .widget) { Color.clear }
     }
 }

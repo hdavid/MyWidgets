@@ -140,16 +140,18 @@ fi
 # NOTE this puts local-config/ — including any Grafana token — inside the built
 # app. Fine for a local debug build on your own device; it is why BundledConfig/
 # is gitignored and why this only happens with *_APP_GROUPS=no.
+# The full config (endpoints, read-only Grafana tokens, tide thresholds) is
+# baked into every build so a fresh install on any device works with zero
+# setup. BundledConfig/ and local-config/ are both gitignored; the tokens are
+# Viewer-only service accounts. ConfigStore still prefers the App Group copy,
+# so in-app edits keep winning over the baked defaults.
 rm -rf BundledConfig
-if [ "$IOS_APP_GROUPS" != yes ] && [ -d local-config ]; then
-    mkdir -p BundledConfig
-    for f in grafana.json webcams.json windguru.json accounts.json; do
+mkdir -p BundledConfig   # xcodegen needs the folder to exist even when empty
+if [ -d local-config ]; then
+    for f in grafana.json webcams.json windguru.json accounts.json tide.json; do
         [ -f "local-config/$f" ] && cp "local-config/$f" "BundledConfig/$f"
     done
     echo "    bundling config for the widget: $(ls BundledConfig 2>/dev/null | tr '\n' ' ')"
-else
-    # xcodegen needs the folder to exist even when empty.
-    mkdir -p BundledConfig
 fi
 
 # xcodegen expands ${VAR} in project.yml from the environment.

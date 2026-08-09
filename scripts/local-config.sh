@@ -29,7 +29,7 @@ CONTAINER="$HOME/Library/Group Containers/$GROUP"
 
 # accounts.json is not listed: it holds Keychain item names per Claude account
 # and is managed entirely in the app's Claude tab.
-FILES=(grafana.json webcams.json windguru.json)
+FILES=(grafana.json webcams.json windguru.json tide.json)
 
 usage() { echo "usage: $0 {apply|save|diff}" >&2; exit 1; }
 [ $# -eq 1 ] || usage
