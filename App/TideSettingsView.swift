@@ -12,6 +12,7 @@ struct TideSettingsView: View {
     @State private var locations: [TideLocation] = TideConfig.load()
     @State private var status: String?
     @State private var statusColor: Color = .secondary
+    @State private var calibrating: String?   // location id while fetching
 
     var body: some View {
         ScrollView {
@@ -68,8 +69,15 @@ struct TideSettingsView: View {
                 }
                 TextField("bias m", value: loc.heightBias, format: .number)
                     .frame(width: 64)
+                if calibrating == loc.id.wrappedValue {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Button("Compute from maree.info") { Task { await calibrate(loc) } }
+                        .font(.caption)
+                        .disabled(calibrating != nil)
+                }
             }
-            Text("Optional height correction h' = scale·h + bias, fitted against maree.info's table for the port. Leave empty for the raw harmonic prediction.")
+            Text("Height correction h' = scale·h + bias. “Compute” reads a month of the maree.info tide table (one manual visit, four page views) and fits the correction against it; empty means the raw harmonic prediction.")
                 .font(.caption2).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -95,10 +103,31 @@ struct TideSettingsView: View {
                     .buttonStyle(.borderless)
                 }
             }
-            Toggle("Show as a page in the watch app",
-                   isOn: Binding(get: { loc.wrappedValue.onWatch },
-                                 set: { loc.wrappedValue.watch = $0 }))
-                .font(.caption)
+            // The watch pairs with an iPhone only — hide everywhere else.
+            #if os(iOS)
+            if UIDevice.current.userInterfaceIdiom == .phone {
+                Toggle("Show as a page in the watch app",
+                       isOn: Binding(get: { loc.wrappedValue.onWatch },
+                                     set: { loc.wrappedValue.watch = $0 }))
+                    .font(.caption)
+            }
+            #endif
+        }
+    }
+
+    private func calibrate(_ loc: Binding<TideLocation>) async {
+        calibrating = loc.id.wrappedValue
+        defer { calibrating = nil }
+        do {
+            let fit = try await TideCalibration.calibrate(loc.wrappedValue)
+            loc.wrappedValue.heightScale = fit.scale
+            loc.wrappedValue.heightBias = fit.bias
+            status = String(format: "Fitted h' = %.3f·h %+.3f over %d extremes (max residual %.2f m). Save to apply.",
+                            fit.scale, fit.bias, fit.samples, fit.maxResidual)
+            statusColor = fit.maxResidual < 0.15 ? .green : .orange
+        } catch {
+            status = error.localizedDescription
+            statusColor = .red
         }
     }
 

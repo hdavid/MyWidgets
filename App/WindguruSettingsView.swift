@@ -87,10 +87,15 @@ struct WindguruSettingsView: View {
                 .settingsWidth(220)
                 Spacer()
             }
-            Toggle("Show as a page in the watch app",
-                   isOn: Binding(get: { spot.wrappedValue.onWatch },
-                                 set: { spot.wrappedValue.watch = $0 }))
-                .font(.caption)
+            // The watch pairs with an iPhone only — hide everywhere else.
+            #if os(iOS)
+            if UIDevice.current.userInterfaceIdiom == .phone {
+                Toggle("Show as a page in the watch app",
+                       isOn: Binding(get: { spot.wrappedValue.onWatch },
+                                     set: { spot.wrappedValue.watch = $0 }))
+                    .font(.caption)
+            }
+            #endif
         }
     }
 

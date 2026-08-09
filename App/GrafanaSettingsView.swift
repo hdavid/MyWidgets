@@ -42,10 +42,15 @@ struct GrafanaSettingsView: View {
                             connectionFields(source)
                             Divider()
                             slotsSection(source)
-                            Toggle("Show as a page in the watch app",
-                                   isOn: Binding(get: { source.wrappedValue.onWatch },
-                                                 set: { source.wrappedValue.watch = $0 }))
-                                .font(.caption)
+                            // The watch pairs with an iPhone only — hide everywhere else.
+                            #if os(iOS)
+                            if UIDevice.current.userInterfaceIdiom == .phone {
+                                Toggle("Show as a page in the watch app",
+                                       isOn: Binding(get: { source.wrappedValue.onWatch },
+                                                     set: { source.wrappedValue.watch = $0 }))
+                                    .font(.caption)
+                            }
+                            #endif
                         }
                     })
 
