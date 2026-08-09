@@ -103,6 +103,12 @@ struct WindguruSpot: Codable, Identifiable, Equatable {
         return (tideGreenAbove - tideOffset) * 100
     }
 
+    /// Whether the watch app shows this entry as a page. Optional so configs
+    /// from before the toggle still decode; missing means shown.
+    var watch: Bool?
+
+    var onWatch: Bool { watch ?? true }
+
     /// GFS 13 km is the one model available for every spot on earth, so it is
     /// the only sane default before a spot is known. Higher-resolution regional
     /// models are offered once "Load models" has asked the spot what it has.

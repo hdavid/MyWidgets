@@ -83,6 +83,11 @@ struct GrafanaSource: Codable, Identifiable, Equatable {
     var dashboardURL: String   // opened when the widget is clicked
     var window: String         // query time window, e.g. "now-3h"
     var slots: [MetricSlot]
+    /// Whether the watch app shows this entry as a page. Optional so configs
+    /// from before the toggle still decode; missing means shown.
+    var watch: Bool?
+
+    var onWatch: Bool { watch ?? true }
 
     init(id: String = UUID().uuidString,
          title: String,

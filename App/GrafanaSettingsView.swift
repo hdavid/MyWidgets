@@ -42,6 +42,10 @@ struct GrafanaSettingsView: View {
                             connectionFields(source)
                             Divider()
                             slotsSection(source)
+                            Toggle("Show as a page in the watch app",
+                                   isOn: Binding(get: { source.wrappedValue.onWatch },
+                                                 set: { source.wrappedValue.watch = $0 }))
+                                .font(.caption)
                         }
                     })
 

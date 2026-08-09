@@ -88,6 +88,10 @@ struct WindguruSettingsView: View {
                 Spacer()
             }
             tideFields(spot)
+            Toggle("Show as a page in the watch app",
+                   isOn: Binding(get: { spot.wrappedValue.onWatch },
+                                 set: { spot.wrappedValue.watch = $0 }))
+                .font(.caption)
         }
     }
 

@@ -35,6 +35,10 @@ struct CamSettingsView: View {
                                 .font(.system(.caption, design: .monospaced))
                             TextField("Page URL opened on click", text: spec.pageURL)
                                 .font(.system(.caption, design: .monospaced))
+                            Toggle("Show as a page in the watch app",
+                                   isOn: Binding(get: { spec.wrappedValue.onWatch },
+                                                 set: { spec.wrappedValue.watch = $0 }))
+                                .font(.caption)
                             HStack {
                                 Text("Refresh").font(.caption).foregroundStyle(.secondary)
                                 TextField("5", value: spec.refreshMinutes,

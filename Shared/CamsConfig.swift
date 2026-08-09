@@ -9,6 +9,11 @@ struct CamSpec: Codable, Identifiable, Equatable {
     var imageURL: String        // still image, re-fetched on every refresh
     var pageURL: String         // opened when the widget is clicked
     var refreshMinutes: Int
+    /// Whether the watch app shows this entry as a page. Optional so configs
+    /// from before the toggle still decode; missing means shown.
+    var watch: Bool?
+
+    var onWatch: Bool { watch ?? true }
 
     init(id: String = UUID().uuidString, name: String, imageURL: String = "",
          pageURL: String = "", refreshMinutes: Int = 5) {
