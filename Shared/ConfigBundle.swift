@@ -16,6 +16,8 @@ struct ConfigBundle: Codable {
     var accounts: [AccountSpec]
     /// Optional so exports from before the tide widgets still decode.
     var tide: [TideLocation]?
+    /// Optional so exports from before station widgets still decode.
+    var windguruStations: [WindguruStation]?
 
     /// Snapshot what's configured right now.
     ///
@@ -37,7 +39,8 @@ struct ConfigBundle: Codable {
                             windguru: WindguruConfig.load(),
                             webcams: CamsConfig.load(),
                             accounts: AccountsConfig.load(),
-                            tide: TideConfig.load())
+                            tide: TideConfig.load(),
+                            windguruStations: WindguruStationsConfig.load())
     }
 
     func encoded() throws -> Data {
@@ -76,14 +79,18 @@ struct ConfigBundle: Codable {
         if !webcams.isEmpty { ok = CamsConfig.save(webcams) && ok }
         if !accounts.isEmpty { ok = AccountsConfig.save(accounts) && ok }
         if let tide, !tide.isEmpty { ok = TideConfig.save(tide) && ok }
+        if let windguruStations, !windguruStations.isEmpty {
+            ok = WindguruStationsConfig.save(windguruStations) && ok
+        }
         return ok
     }
 
     /// "2 sources · 1 spot · 3 webcams · 2 accounts"
     var summary: String {
-        [count(grafana.count, "source"), count(windguru.count, "spot"),
-         count(webcams.count, "webcam"), count(accounts.count, "account")]
-            .joined(separator: " · ")
+        var parts = [count(grafana.count, "source"), count(windguru.count, "spot"),
+                     count(webcams.count, "webcam"), count(accounts.count, "account")]
+        if let n = windguruStations?.count, n > 0 { parts.append(count(n, "station")) }
+        return parts.joined(separator: " · ")
     }
 
     private func count(_ n: Int, _ noun: String) -> String {
