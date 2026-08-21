@@ -20,7 +20,7 @@ struct MyWidgetsApp: App {
     #if os(iOS)
     @Environment(\.scenePhase) private var scenePhase
     #endif
-    @State private var selectedTab: SettingsTab = .grafana
+    @State private var selectedTab: SettingsTab = .windguru
 
     init() {
         #if os(iOS)
@@ -95,10 +95,10 @@ struct MainWindowView: View {
         // Claude usage summary intentionally NOT in the window — the menu-bar
         // panel and the widget already show it.
         #if os(macOS)
+        // Grafana sits at the back, next to Config: it demands a self-hosted
+        // Grafana, so most people never open it — the windguru tabs work out
+        // of the box and get the front.
         TabView(selection: $selection) {
-            GrafanaSettingsView()
-                .tabItem { Label("Grafana", systemImage: "chart.xyaxis.line") }
-                .tag(SettingsTab.grafana)
             WindguruSettingsView()
                 .tabItem { Label("Windguru", systemImage: "wind") }
                 .tag(SettingsTab.windguru)
@@ -111,6 +111,9 @@ struct MainWindowView: View {
             AccountSettingsView(model: model)
                 .tabItem { Label("Claude", systemImage: "person.2") }
                 .tag(SettingsTab.claude)
+            GrafanaSettingsView()
+                .tabItem { Label("Grafana", systemImage: "chart.xyaxis.line") }
+                .tag(SettingsTab.grafana)
             ConfigSettingsView()
                 .tabItem { Label("Config", systemImage: "arrow.up.arrow.down.circle") }
                 .tag(SettingsTab.config)
@@ -121,11 +124,12 @@ struct MainWindowView: View {
         .padding(12)
         .frame(width: 620, height: 620)
         #else
+        // Same back-of-the-list Grafana as on macOS (no Claude tab here).
         TabView(selection: $selection) {
-            phoneTab(GrafanaSettingsView(), "Grafana", "chart.xyaxis.line", .grafana)
             phoneTab(WindguruSettingsView(), "Windguru", "wind", .windguru)
             phoneTab(TideSettingsView(), "Tide", "water.waves", .tide)
             phoneTab(CamSettingsView(), "Webcams", "video", .webcams)
+            phoneTab(GrafanaSettingsView(), "Grafana", "chart.xyaxis.line", .grafana)
             phoneTab(ConfigSettingsView(), "Config", "arrow.up.arrow.down.circle", .config)
         }
         #endif
