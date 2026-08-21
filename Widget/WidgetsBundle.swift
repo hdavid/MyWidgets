@@ -11,6 +11,7 @@ struct MyWidgetsBundle: WidgetBundle {
     #if os(macOS)
     var body: some Widget {
         MetricsWidget()
+        WindguruStationWidget()
         ForecastWidget()
         TideTodayWidget()
         TideDaysWidget()
@@ -20,6 +21,7 @@ struct MyWidgetsBundle: WidgetBundle {
     #else
     var body: some Widget {
         MetricsWidget()
+        WindguruStationWidget()
         ForecastWidget()
         TideTodayWidget()
         TideDaysWidget()

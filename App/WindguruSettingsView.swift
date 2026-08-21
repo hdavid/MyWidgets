@@ -10,6 +10,7 @@ import WidgetKit
 /// configuration intent (right-click → Edit Widget).
 struct WindguruSettingsView: View {
     @State private var spots: [WindguruSpot] = WindguruConfig.load()
+    @State private var stations: [WindguruStation] = WindguruStationsConfig.load()
     /// Per spot, since which models exist depends on the region.
     @State private var models: [String: [WindguruModel]] = [:]
     @State private var status: String?
@@ -36,6 +37,26 @@ struct WindguruSettingsView: View {
                         spotFields(spot)
                     })
 
+                Text("Live stations").font(.headline).padding(.top, 8)
+                Text("Live wind from a windguru weather station — the Windguru Station widget shows it like the Grafana one. A station's id is the number in its page URL: windguru.cz/station/2323 → 2323. Leave the name empty and “Save & test” fills it with the station's own.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Link("Find a station on the windguru stations map",
+                     destination: Windguru.stationsMapURL)
+                    .font(.caption)
+
+                ConfigEntryList(
+                    items: $stations,
+                    addLabel: "Add station",
+                    newItem: { WindguruStation() },
+                    header: { station in
+                        TextField("Name shown as the widget heading", text: station.title)
+                    },
+                    detail: { station in
+                        stationFields(station)
+                    })
+
                 HStack(spacing: 8) {
                     if busy { ProgressView().controlSize(.small) }
                     if let status {
@@ -45,14 +66,17 @@ struct WindguruSettingsView: View {
                     Spacer()
                     Button("Save & test") { Task { await saveAndTest() } }
                         .keyboardShortcut(.defaultAction)
-                        .disabled(busy || spots.isEmpty)
+                        .disabled(busy || (spots.isEmpty && stations.isEmpty))
                 }
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .textFieldStyle(.roundedBorder)
-        .onAppear { spots = WindguruConfig.load() }
+        .onAppear {
+            spots = WindguruConfig.load()
+            stations = WindguruStationsConfig.load()
+        }
     }
 
     private func spotFields(_ spot: Binding<WindguruSpot>) -> some View {
@@ -97,6 +121,23 @@ struct WindguruSettingsView: View {
                     .font(.caption)
             }
             #endif
+        }
+    }
+
+    private func stationFields(_ station: Binding<WindguruStation>) -> some View {
+        let configured = station.stationId.wrappedValue > 0
+        return HStack {
+            Text("Station ID").font(.caption).foregroundStyle(.secondary)
+            TextField("from the station page URL", value: station.stationId,
+                      format: .number.grouping(.never))
+                .settingsWidth(90)
+            if configured {
+                Link("open", destination: Windguru.stationPageURL(station: station.stationId.wrappedValue))
+                    .font(.caption)
+            } else {
+                Text("required").font(.caption2).foregroundStyle(.orange)
+            }
+            Spacer()
         }
     }
 
@@ -154,26 +195,43 @@ struct WindguruSettingsView: View {
         defer { busy = false }
         status = nil
 
-        guard WindguruConfig.save(spots) else {
+        guard WindguruConfig.save(spots), WindguruStationsConfig.save(stations) else {
             status = "Could not write the config file."
             statusColor = .red
             return
         }
         WidgetCenter.shared.reloadTimelines(ofKind: "WindguruForecast")
+        WidgetCenter.shared.reloadTimelines(ofKind: "WindguruStation")
 
-        let unset = spots.filter { !$0.isConfigured }
+        let unset = spots.filter { !$0.isConfigured }.count
+                  + stations.filter { !$0.isConfigured }.count
         var ok: [String] = []
         var bad: [String] = []
         for spot in spots where spot.isConfigured {
             if await Windguru.fetch(spot) != nil { ok.append(spot.heading) }
             else { bad.append(spot.heading) }
         }
+        for i in stations.indices where stations[i].isConfigured {
+            if await Windguru.stationCurrent(station: stations[i].stationId) != nil {
+                // An empty name gets the station's own, so the widget picker,
+                // the heading and the status line below say something better
+                // than "Station 2323".
+                if stations[i].title.isEmpty,
+                   let name = await Windguru.stationName(station: stations[i].stationId) {
+                    stations[i].title = name
+                    WindguruStationsConfig.save(stations)
+                }
+                ok.append(stations[i].heading)
+            } else {
+                bad.append(stations[i].heading)
+            }
+        }
 
         if !bad.isEmpty {
-            status = "Saved, but no forecast for: \(bad.joined(separator: ", ")) — check the spot ids."
+            status = "Saved, but nothing came back for: \(bad.joined(separator: ", ")) — check the ids."
             statusColor = .orange
-        } else if !unset.isEmpty {
-            status = "Saved ✓ — \(unset.count) spot\(unset.count == 1 ? "" : "s") still need a spot id."
+        } else if unset > 0 {
+            status = "Saved ✓ — \(unset) entr\(unset == 1 ? "y" : "ies") still need an id."
             statusColor = .orange
         } else {
             status = "Saved ✓ — \(ok.joined(separator: ", "))."

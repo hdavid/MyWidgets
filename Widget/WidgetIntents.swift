@@ -124,6 +124,44 @@ struct SelectSpotIntent: WidgetConfigurationIntent {
     var spot: SpotEntity?
 }
 
+// MARK: - Windguru station
+
+struct StationEntity: AppEntity, Identifiable {
+    let id: String
+    let name: String
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation { "Station" }
+    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
+    static var defaultQuery = StationEntityQuery()
+
+    init(_ station: WindguruStation) {
+        id = station.id
+        name = station.heading
+    }
+}
+
+struct StationEntityQuery: EntityQuery {
+    func entities(for identifiers: [String]) async throws -> [StationEntity] {
+        WindguruStationsConfig.load().filter { identifiers.contains($0.id) }.map(StationEntity.init)
+    }
+
+    func suggestedEntities() async throws -> [StationEntity] {
+        WindguruStationsConfig.load().map(StationEntity.init)
+    }
+
+    func defaultResult() async -> StationEntity? {
+        WindguruStationsConfig.load().first.map(StationEntity.init)
+    }
+}
+
+struct SelectStationIntent: WidgetConfigurationIntent {
+    static var title: LocalizedStringResource = "Windguru station"
+    static var description = IntentDescription("Choose which windguru station this widget shows.")
+
+    @Parameter(title: "Station")
+    var station: StationEntity?
+}
+
 // MARK: - Tide location
 
 struct TideLocationEntity: AppEntity, Identifiable {

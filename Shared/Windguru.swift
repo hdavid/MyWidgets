@@ -264,6 +264,67 @@ enum Windguru {
         await spotInfo(spot: spot)?.models
     }
 
+    // MARK: Live stations
+    //
+    // Same iapi endpoint, station queries. Wind values are in knots — the
+    // station upload API demands knots, and station_data_current returns the
+    // uploads as-is. The graph/history query (`station_data_graph`) requires a
+    // logged-in session, so station widgets grow their own sparkline locally
+    // (see StationHistory).
+
+    /// One current reading of a windguru weather station.
+    struct StationReading {
+        var wind: Double?      // knots
+        var gust: Double?      // knots
+        var dir: Double?       // degrees the wind comes FROM
+        var temp: Double?      // °C
+        var rh: Double?        // %
+        var mslp: Double?      // hPa
+        var at: Date?          // the station's own measurement time
+    }
+
+    static func stationPageURL(station: Int) -> URL {
+        URL(string: "https://www.windguru.cz/station/\(station)")!
+    }
+
+    /// Map of all stations — where a user finds one and reads its id.
+    static let stationsMapURL = URL(string: "https://www.windguru.cz/map/station")!
+
+    /// `q=station_data_current`. Nil for an unknown station or a reading with
+    /// no wind at all; a *stale* reading still comes back (the endpoint keeps
+    /// returning the last upload), so check `at` for freshness, not nil.
+    static func stationCurrent(station: Int) async -> StationReading? {
+        guard
+            let (data, resp) = try? await URLSession.shared.data(
+                for: request("q=station_data_current&id_station=\(station)")),
+            (resp as? HTTPURLResponse)?.statusCode == 200,
+            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            obj["return"] == nil   // errors come back {"return":"error", …}
+        else { return nil }
+        func value(_ key: String) -> Double? { (obj[key] as? NSNumber)?.doubleValue }
+        var r = StationReading(wind: value("wind_avg"), gust: value("wind_max"),
+                               dir: value("wind_direction"), temp: value("temperature"),
+                               rh: value("rh"), mslp: value("mslp"))
+        guard r.wind != nil else { return nil }
+        r.at = value("unixtime").map { Date(timeIntervalSince1970: $0) }
+        return r
+    }
+
+    /// `q=station` — metadata, used to validate an id and suggest a title.
+    /// "MeteoStar Team · Checa-Ur" style, whichever parts exist.
+    static func stationName(station: Int) async -> String? {
+        guard
+            let (data, resp) = try? await URLSession.shared.data(
+                for: request("q=station&id_station=\(station)")),
+            (resp as? HTTPURLResponse)?.statusCode == 200,
+            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            obj["return"] == nil
+        else { return nil }
+        let parts = [obj["name"] as? String, obj["spotname"] as? String]
+            .compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     // MARK: Forecast
 
     private static func fetchModel(spot: Int, model: Int) async -> [String: Any]? {
