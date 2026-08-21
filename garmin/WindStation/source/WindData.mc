@@ -8,11 +8,26 @@ import Toybox.Time;
 // round-trips matter on a watch. Stations are baked in (private, sideloaded
 // app; rebuild to change them); only the per-station tokens are settings,
 // entered via Garmin Connect on the paired phone. Queries mirror
-// local-config/grafana.json: Moutiers is a Vevor (calibration * 1.2), La
-// Bernerie a WS90 (* 1.0); both convert km/h to knots via * 0.54. The glance
-// fetches only the four wind refs; the widget view adds temperature,
+// local-config/grafana.json: both sites are now Ecowitt WittBoy (WS90)
+// stations, so the measurement names match and only the host and the
+// host differs. Both convert km/h to knots via * 0.54.
+//
+// The site/masking multiplier is NOT applied here. It is applied once,
+// upstream, in the openHAB conversion rule on each Pi, so InfluxDB already
+// holds corrected km/h. The explicit * 1.0 is a reminder: putting a real
+// factor back here would double-correct.
+//
+// The headline "avg" is a 5-minute mean — a lone instant reading is too
+// jumpy to act on. It reads the one_minute retention policy's downsampled
+// mean_value field (what the Grafana dashboards show) rather than averaging
+// raw autogen samples. "inst" keeps the latest raw instant sample for the
+// widget view's small "now" line and for the measured-at timestamp (the
+// mean's own timestamp is the window START, ~5 min stale).
+//
+// The glance fetches only the wind refs; the widget view adds temperature,
 // pressure (+3h-ago value for the trend arrow, Moutiers only — Bernerie has
-// no pressure sensor) and the 1h/1min wind series for the sparkline.
+// no barometer; Moutiers' comes from a SEPARATE 433 MHz sensor, P12_C0, not
+// from the weather station) and the 1h/1min wind series for the sparkline.
 (:background, :glance)
 module WindData {
 
@@ -22,20 +37,22 @@ module WindData {
             "base" => "https://moutiers.motscousus.com/grafana",
             "tokenKey" => "tokenMoutiers",
             "datasourceId" => 1,
-            "avg" => "SELECT last(value) * 1.2 * 0.54 FROM autogen.vevor_weather_wind_avg_km_h",
-            "gust" => "SELECT last(value) * 1.2 * 0.54 FROM autogen.vevor_weather_wind_max_km_h",
-            "dir" => "SELECT last(value) FROM autogen.vevor_weather_wind_dir_deg",
-            "temp" => "SELECT last(value) FROM autogen.vevor_weather_temperature_c",
+            "avg" => "SELECT mean(mean_value) * 1.0 * 0.54 FROM one_minute.ws90_weather_wind_avg_km_h WHERE time > now() - 5m",
+            "inst" => "SELECT last(value) * 1.0 * 0.54 FROM autogen.ws90_weather_wind_avg_km_h",
+            "gust" => "SELECT last(value) * 1.0 * 0.54 FROM autogen.ws90_weather_wind_max_km_h",
+            "dir" => "SELECT last(value) FROM autogen.ws90_weather_wind_dir_deg",
+            "temp" => "SELECT last(value) FROM autogen.ws90_weather_temperature_c",
             "pressure" => "SELECT last(value) FROM autogen.P12_C0_pressure_hPa",
             "ptrend" => "SELECT first(value) FROM autogen.P12_C0_pressure_hPa WHERE time > now() - 3h",
-            "series" => "SELECT mean(value) * 1.2 * 0.54 FROM autogen.vevor_weather_wind_avg_km_h WHERE time > now() - 1h GROUP BY time(1m) fill(none)"
+            "series" => "SELECT mean(value) * 1.0 * 0.54 FROM autogen.ws90_weather_wind_avg_km_h WHERE time > now() - 1h GROUP BY time(1m) fill(none)"
         },
         {
             "label" => "BERNERIE",
             "base" => "https://bernerie.motscousus.com/grafana",
             "tokenKey" => "tokenBernerie",
             "datasourceId" => 1,
-            "avg" => "SELECT last(value) * 1.0 * 0.54 FROM autogen.ws90_weather_wind_avg_km_h",
+            "avg" => "SELECT mean(mean_value) * 1.0 * 0.54 FROM one_minute.ws90_weather_wind_avg_km_h WHERE time > now() - 5m",
+            "inst" => "SELECT last(value) * 1.0 * 0.54 FROM autogen.ws90_weather_wind_avg_km_h",
             "gust" => "SELECT last(value) * 1.0 * 0.54 FROM autogen.ws90_weather_wind_max_km_h",
             "dir" => "SELECT last(value) FROM autogen.ws90_weather_wind_dir_deg",
             "temp" => "SELECT last(value) FROM autogen.ws90_weather_temperature_c",
@@ -45,14 +62,16 @@ module WindData {
         }
     ];
 
-    // ref -> station query key; A-C are the glance/background set (light
-    // response), D-G the widget-view extras.
+    // ref -> station query key; A-C plus H are the glance/background set
+    // (light response), D-G the widget-view extras. H rides along in the
+    // light set too: it is the freshest sample, so it supplies mAt.
     const REFS = {
         "A" => "avg", "B" => "gust", "C" => "dir",
-        "D" => "temp", "E" => "pressure", "F" => "ptrend", "G" => "series"
+        "D" => "temp", "E" => "pressure", "F" => "ptrend", "G" => "series",
+        "H" => "inst"
     };
-    const LIGHT_REFS = ["A", "B", "C"];
-    const FULL_REFS = ["A", "B", "C", "D", "E", "F", "G"];
+    const LIGHT_REFS = ["A", "B", "C", "H"];
+    const FULL_REFS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
     // Kick off the request for one station; cb is a Method(responseCode, data)
     // owned by the calling view, invoked when the response arrives.
@@ -98,6 +117,9 @@ module WindData {
     function parse(station as Lang.Number, data, persist as Lang.Boolean) as Lang.Dictionary or Null {
         var avgCol = _columns(data, "A");
         if (avgCol == null) { return null; }
+        // mAt from the instant ref: the 5-min mean's timestamp (ref A) is the
+        // window start, so it would read ~5 min stale even on fresh data.
+        var instCol = _columns(data, "H");
         var snap = {
             "avg" => _first(avgCol),
             "gust" => _value(data, "B"),
@@ -106,7 +128,8 @@ module WindData {
             "pressure" => _value(data, "E"),
             "ptrend" => _value(data, "F"),
             "series" => _series(data, "G"),
-            "mAt" => _firstTime(avgCol),
+            "inst" => instCol != null ? _first(instCol) : null,
+            "mAt" => instCol != null ? _firstTime(instCol) : _firstTime(avgCol),
             "at" => Time.now().value()
         };
         if (snap["avg"] == null) { return null; }

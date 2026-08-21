@@ -163,23 +163,21 @@ final class UsageAppModel: ObservableObject {
     private var timer: Timer?
 
     init() {
-        registerLoginItem()
+        unregisterLoginItem()
         refresh()  // honors the freshness guard below
         timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
     }
 
-    /// Launch at login so the usage widget stays fresh without opening anything.
-    private func registerLoginItem() {
-        do {
-            if SMAppService.mainApp.status != .enabled {
-                try SMAppService.mainApp.register()
-            }
-        } catch {
-            // Non-fatal: the app still works while running.
-            lastError = "login-item: \(error.localizedDescription)"
-        }
+    /// The app used to register itself as a login item (to keep the usage
+    /// widget fresh without opening anything), which is no longer wanted. Only
+    /// the app itself can remove its SMAppService registration, so actively
+    /// unregister rather than merely not registering: installs that already
+    /// carry the login item lose it on their next launch. A no-op afterwards.
+    private func unregisterLoginItem() {
+        guard SMAppService.mainApp.status == .enabled else { return }
+        SMAppService.mainApp.unregister { _ in }
     }
 
     /// Refresh Claude usage. `force` bypasses the freshness guard (used by

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Wind widget for Henri's Vevor station Grafana (moutiers.motscousus.com).
+<!-- Wind widget for Henri's two WS90 weather stations, read from their
+     Grafana instances (moutiers/bernerie.motscousus.com).
      Product list is a broad guess at modern CIQ 3.1+ watches; prune to the
      actual target device once known — unknown ids fail the build harmlessly. -->
 <iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">

@@ -97,7 +97,6 @@ enum Grafana {
         guard s.isConfigured else { return nil }
         let slots = s.slots.filter { $0.enabled && !$0.query.isEmpty }
         guard !slots.isEmpty else { return nil }
-        let primaryID = s.slot(.primary)?.id
 
         var values: [String: Double] = [:]
         var trends: [String: Double] = [:]
@@ -128,8 +127,10 @@ enum Grafana {
                 switch result {
                 case .value(let id, let v, let at):
                     values[id] = v
-                    // The headline metric's timestamp is what "measured at" means.
-                    if id == primaryID || measuredAt == nil { measuredAt = at }
+                    // "Measured at" = the newest sample any slot returned. The
+                    // primary is a windowed mean whose timestamp is the window
+                    // start, so it specifically must not define freshness.
+                    if measuredAt.map({ at > $0 }) ?? true { measuredAt = at }
                 case .trend(let id, let v):
                     trends[id] = v
                 case .series(let vs):

@@ -108,7 +108,9 @@ class WindStationView extends WatchUi.View {
 
         _drawCompass(dc, w * 27 / 100, h * 38 / 100, w * 13 / 100, dir);
 
-        // Speed block, right of the compass: big average and gust.
+        // Speed block, right of the compass: big 5-min average, gust, and the
+        // instant reading small below — the average is the number to act on,
+        // the instant just shows what the sensor says right now.
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
         var sx = w * 63 / 100;
         dc.drawText(sx, h * 32 / 100, Graphics.FONT_NUMBER_MEDIUM, WindData.knots(_snap["avg"]),
@@ -118,6 +120,11 @@ class WindStationView extends WatchUi.View {
                     Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
         dc.drawText(sx, h * 46 / 100, Graphics.FONT_TINY, "Gust " + WindData.knots(_snap["gust"]),
                     Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        if (_snap["inst"] != null) {
+            dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
+            dc.drawText(sx, h * 53 / 100, Graphics.FONT_XTINY, "now " + WindData.knots(_snap["inst"]),
+                        Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        }
 
         _drawChips(dc, cx, h * 60 / 100);
         _drawSparkline(dc, w, h);

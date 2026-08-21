@@ -150,11 +150,11 @@ struct GrafanaSettingsView: View {
         let slot: Binding<MetricSlot>
     }
 
-    /// Slots are kept in canonical order (big number, under it, rose,
-    /// sparkline, then six chips), so rows bind by index.
+    /// Slots are kept in canonical order (big number, the two items on the
+    /// line under it, rose, sparkline, then six chips), so rows bind by index.
     private func fixedRows(_ source: Binding<GrafanaSource>) -> [FixedRow] {
-        guard source.slots.wrappedValue.count >= 10 else { return [] }
-        let titles = ["Big number", "Under it", "Rose °", "Sparkline",
+        guard source.slots.wrappedValue.count >= 11 else { return [] }
+        let titles = ["Big number", "Under it", "Under it 2", "Rose °", "Sparkline",
                       "Chip 1", "Chip 2", "Chip 3", "Chip 4", "Chip 5", "Chip 6"]
         return titles.indices.map { FixedRow(title: titles[$0], slot: source.slots[$0]) }
     }
@@ -164,17 +164,19 @@ struct GrafanaSettingsView: View {
     /// older config never loses data it can't display.
     private func canonicalize(_ source: Binding<GrafanaSource>) {
         var pool = source.slots.wrappedValue
-        guard !(pool.count >= 10 && pool[0].role == .primary && pool[1].role == .secondary
-                && pool[2].role == .direction && pool[3].role == .series) else { return }
+        guard !(pool.count >= 11 && pool[0].role == .primary && pool[1].role == .secondary
+                && pool[2].role == .tertiary && pool[3].role == .direction
+                && pool[4].role == .series) else { return }
         func take(_ role: SlotRole) -> MetricSlot {
             if let i = pool.firstIndex(where: { $0.role == role }) {
                 return pool.remove(at: i)
             }
             return MetricSlot(role: role, query: "")
         }
-        var out = [take(.primary), take(.secondary), take(.direction), take(.series)]
+        var out = [take(.primary), take(.secondary), take(.tertiary), take(.direction),
+                   take(.series)]
         for _ in 0..<6 { out.append(take(.chip)) }
-        out += pool   // e.g. an old tertiary slot — preserved, not shown
+        out += pool   // anything unrecognized — preserved, not shown
         source.slots.wrappedValue = out
     }
 

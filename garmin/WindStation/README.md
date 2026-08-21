@@ -1,12 +1,14 @@
 # Wind Station — Garmin Connect IQ widget
 
-Shows live wind from both stations — Moutiers (Vevor) and La Bernerie (WS90)
-— querying the same Grafana `/api/ds/query` endpoints as the Apple widgets,
-one batched POST per station. The glance shows one line per station
-(`MOU 14.2 g18.4 NW`); the full widget mirrors the iOS medium widget (minus
-watts/dew/humidity/max): compass rose with direction needle, big average,
-gust, temperature, pressure + 3 h trend arrow (Moutiers only — Bernerie has
-no pressure sensor), 1 h wind sparkline, and the measurement time.
+Shows live wind from both stations — Moutiers and La Bernerie, both Ecowitt
+WittBoy (WS90) — querying the same Grafana `/api/ds/query` endpoints as the
+Apple widgets, one batched POST per station. The glance shows one line per
+station (`MOU 14.2 g18.4 NW`); the full widget mirrors the iOS medium widget
+(minus watts/dew/humidity/max): compass rose with direction needle, big
+5-minute average (an instant reading is too jumpy to act on), gust, the
+instant reading small below it, temperature, pressure + 3 h trend arrow
+(Moutiers only, and from a separate 433 MHz sensor — neither WS90 measures
+pressure), 1 h wind sparkline, and the measurement time.
 SELECT/tap flips stations. Stations (hosts, queries, calibration factors)
 are baked into `source/WindData.mc` — this is a private sideloaded app,
 rebuild to change them.

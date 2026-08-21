@@ -137,9 +137,11 @@ struct GrafanaSource: Codable, Identifiable, Equatable {
     static func exampleSlots() -> [MetricSlot] {
         [
             MetricSlot(role: .primary, unit: "kn", decimals: 1, scale: .wind,
-                       query: "SELECT last(value) FROM autogen.wind_avg_knots"),
+                       query: "SELECT mean(value) FROM autogen.wind_avg_knots WHERE time > now() - 5m"),
             MetricSlot(role: .secondary, label: "Gust", decimals: 1, scale: .wind,
                        query: "SELECT last(value) FROM autogen.wind_gust_knots"),
+            MetricSlot(role: .tertiary, label: "now", decimals: 1, scale: .wind,
+                       query: "SELECT last(value) FROM autogen.wind_avg_knots"),
             MetricSlot(role: .direction, unit: "°", decimals: 0,
                        query: "SELECT last(value) FROM autogen.wind_direction_deg"),
             MetricSlot(role: .series,
