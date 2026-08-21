@@ -268,9 +268,9 @@ enum Windguru {
     //
     // Same iapi endpoint, station queries. Wind values are in knots — the
     // station upload API demands knots, and station_data_current returns the
-    // uploads as-is. The graph/history query (`station_data_graph`) requires a
-    // logged-in session, so station widgets grow their own sparkline locally
-    // (see StationHistory).
+    // uploads as-is. History comes from `q=station_data` with a from/to
+    // window, no auth needed (`station_data_graph` is the one that wants a
+    // login — the station page itself uses `station_data`).
 
     /// One current reading of a windguru weather station.
     struct StationReading {
@@ -308,6 +308,28 @@ enum Windguru {
         guard r.wind != nil else { return nil }
         r.at = value("unixtime").map { Date(timeIntervalSince1970: $0) }
         return r
+    }
+
+    /// `q=station_data` — the last hour of wind_avg for the sparkline,
+    /// mirroring the Grafana widgets' 1 h series. `avg_minutes=1` returns the
+    /// station's own upload cadence (typically 1–10 min → 6–60 points).
+    /// Missing uploads are simply absent, so the values line up unevenly in
+    /// time — close enough for a background sparkline.
+    static func stationSeries(station: Int) async -> [Double?] {
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let to = fmt.string(from: Date())
+        let from = fmt.string(from: Date().addingTimeInterval(-3600))
+        guard
+            let (data, resp) = try? await URLSession.shared.data(
+                for: request("q=station_data&id_station=\(station)&from=\(from)&to=\(to)&avg_minutes=1&graph_info=1")),
+            (resp as? HTTPURLResponse)?.statusCode == 200,
+            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let wind = obj["wind_avg"] as? [Any]
+        else { return [] }
+        let values = wind.map { ($0 as? NSNumber)?.doubleValue }
+        // The Sparkline view needs at least two values to draw anything.
+        return values.compactMap { $0 }.count >= 2 ? values : []
     }
 
     /// `q=station` — metadata, used to validate an id and suggest a title.

@@ -40,9 +40,9 @@ struct StationProvider: AppIntentTimelineProvider {
                                 configured: false)
         }
         let source = WindguruStationDisplay.source(station)
+        async let series = Windguru.stationSeries(station: station.stationId)
         if let reading = await Windguru.stationCurrent(station: station.stationId) {
-            let series = StationHistory.append(reading, for: station.id)
-            let snap = WindguruStationDisplay.snapshot(reading, series: series)
+            let snap = WindguruStationDisplay.snapshot(reading, series: await series)
             WindStore.save(snap, for: storeKey(station))
             // A station that stopped uploading still answers with its last
             // reading — that is data, not an outage, so `stale` stays false and
