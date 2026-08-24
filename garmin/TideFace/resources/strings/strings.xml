@@ -12,5 +12,6 @@
     <string id="OptWindBernerie">Wind Bernerie</string>
     <string id="OptBattery">Battery</string>
     <string id="OptNothing">Nothing</string>
+    <string id="OptTide">Tide dial</string>
     <string id="TideThreshold">Tide green above (m, 0 = off)</string>
 </resources>

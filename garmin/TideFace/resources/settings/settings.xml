@@ -9,6 +9,7 @@
                 <listEntry value="3">@Strings.OptWindMoutiers</listEntry>
                 <listEntry value="4">@Strings.OptWindBernerie</listEntry>
                 <listEntry value="5">@Strings.OptBattery</listEntry>
+                <listEntry value="7">@Strings.OptTide</listEntry>
                 <listEntry value="6">@Strings.OptNothing</listEntry>
             </settingConfig>
         </setting>
@@ -20,6 +21,7 @@
                 <listEntry value="3">@Strings.OptWindMoutiers</listEntry>
                 <listEntry value="4">@Strings.OptWindBernerie</listEntry>
                 <listEntry value="5">@Strings.OptBattery</listEntry>
+                <listEntry value="7">@Strings.OptTide</listEntry>
                 <listEntry value="6">@Strings.OptNothing</listEntry>
             </settingConfig>
         </setting>
@@ -31,6 +33,7 @@
                 <listEntry value="3">@Strings.OptWindMoutiers</listEntry>
                 <listEntry value="4">@Strings.OptWindBernerie</listEntry>
                 <listEntry value="5">@Strings.OptBattery</listEntry>
+                <listEntry value="7">@Strings.OptTide</listEntry>
                 <listEntry value="6">@Strings.OptNothing</listEntry>
             </settingConfig>
         </setting>
@@ -42,6 +45,7 @@
                 <listEntry value="3">@Strings.OptWindMoutiers</listEntry>
                 <listEntry value="4">@Strings.OptWindBernerie</listEntry>
                 <listEntry value="5">@Strings.OptBattery</listEntry>
+                <listEntry value="7">@Strings.OptTide</listEntry>
                 <listEntry value="6">@Strings.OptNothing</listEntry>
             </settingConfig>
         </setting>

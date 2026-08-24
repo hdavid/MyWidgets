@@ -126,7 +126,9 @@ class TideFaceView extends WatchUi.WatchFace {
         var rising = next != null ? next[2]
                                   : TideMath.table(now + 300) > h0;
         var frac = 0.5;
+        var p = 0.5;   // progress through the current half-cycle, for the dial
         if (prev != null && next != null) {
+            p = (now - prev[0]).toFloat() / (next[0] - prev[0]);
             var lo = prev[1] < next[1] ? prev[1] : next[1];
             var hi = prev[1] < next[1] ? next[1] : prev[1];
             if (hi - lo > 0.1) {
@@ -135,7 +137,7 @@ class TideFaceView extends WatchUi.WatchFace {
                 if (frac > 1.0) { frac = 1.0; }
             }
         }
-        _tide = [now, frac, rising, h0];
+        _tide = [now, frac, rising, h0, p];
         return _tide;
     }
 
@@ -303,7 +305,33 @@ class TideFaceView extends WatchUi.WatchFace {
         case 3: _drawWind(dc, x, y, 0); break;
         case 4: _drawWind(dc, x, y, 1); break;
         case 5: _drawBattery(dc, x, y); break;
+        case 7: _drawTideDial(dc, x, y); break;
         }
+    }
+
+    // The Apple-watch-style tide complication: a mini tide clock — high water
+    // at 12, low at 6, a marker sweeping clockwise around the ring (left half
+    // coming in, right half going out) — with the current height centered.
+    function _drawTideDial(dc as Graphics.Dc, x as Lang.Number, y as Lang.Number) as Void {
+        var tide = _tideState();
+        var rising = tide[2] as Lang.Boolean;
+        var p = tide[4] as Lang.Float;
+        var angle = rising ? Math.PI * (1.0 + p) : Math.PI * p;
+        dc.setPenWidth(4);
+        dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
+        dc.drawCircle(x, y, 36);
+        dc.setPenWidth(1);
+        // High/low marks at 12 and 6.
+        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
+        dc.fillRectangle(x - 1, y - 40, 3, 8);
+        dc.fillRectangle(x - 1, y + 32, 3, 8);
+        // The marker riding the ring.
+        dc.setColor(NEEDLE, Graphics.COLOR_TRANSPARENT);
+        dc.fillCircle(x + 36 * Math.sin(angle), y - 36 * Math.cos(angle), 5);
+        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(x, y, Graphics.FONT_TINY,
+                    (tide[3] as Lang.Float).format("%.1f") + "m",
+                    Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
     }
 
     // Battery: ring filled proportionally, orange under 20 %.
