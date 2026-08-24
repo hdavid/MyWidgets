@@ -347,34 +347,50 @@ class TideFaceView extends WatchUi.WatchFace {
                         [cx + 6, tip - dir * 2]]);
     }
 
-    // The default face's hands: rounded-ended bars detached from the center
-    // (a visible gap, tiny center dot), hour short and thick, minute long and
-    // thin with a small open ring near its tip.
+    // The default face's hands: plain rounded bars detached from the center
+    // for hour and minute, and — while the screen is awake — a skinny seconds
+    // needle carrying a small open ring near its tip. AMOLED faces repaint
+    // every second in high power and once a minute in always-on, which is
+    // exactly when the native face shows and hides its seconds hand too.
     function _drawHands(dc as Graphics.Dc, cx as Lang.Number, cy as Lang.Number,
                         h as Lang.Number, color as Graphics.ColorType) as Void {
         var clock = System.getClockTime();
         var minuteA = clock.min * Math.PI / 30.0;
         var hourA = (clock.hour % 12 + clock.min / 60.0) * Math.PI / 6.0;
-        _hand(dc, cx, cy, hourA, 30, h * 26 / 100, 9, color);
-        var mLen = h * 42 / 100;
-        _hand(dc, cx, cy, minuteA, 30, mLen, 5, color);
-        var rx = cx + (mLen - 11) * Math.sin(minuteA);
-        var ry = cy - (mLen - 11) * Math.cos(minuteA);
-        dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_TRANSPARENT);
-        dc.fillCircle(rx, ry, 7);
+        _hand(dc, cx, cy, hourA, 34, h * 28 / 100, 8, color);
+        _hand(dc, cx, cy, minuteA, 34, h * 43 / 100, 6, color);
+        if (!_sleep) {
+            var secondA = clock.sec * Math.PI / 30.0;
+            var sLen = h * 45 / 100;
+            _hand(dc, cx, cy, secondA, 14, sLen - 16, 3, color);
+            var rx = cx + (sLen - 8) * Math.sin(secondA);
+            var ry = cy - (sLen - 8) * Math.cos(secondA);
+            dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_TRANSPARENT);
+            dc.fillCircle(rx, ry, 8);
+            dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+            dc.setPenWidth(3);
+            dc.drawCircle(rx, ry, 8);
+            dc.setPenWidth(1);
+        }
         dc.setColor(color, Graphics.COLOR_TRANSPARENT);
-        dc.setPenWidth(3);
-        dc.drawCircle(rx, ry, 7);
-        dc.setPenWidth(1);
         dc.fillCircle(cx, cy, 3);
     }
 
     // One bar from rIn to rOut along `angle` (radians clockwise from 12),
-    // rounded at both ends.
+    // rounded at both ends, with a thin dark halo so it separates from
+    // whatever it crosses — the native hands read that way too.
     function _hand(dc as Graphics.Dc, cx as Lang.Number, cy as Lang.Number,
                    angle as Lang.Float or Lang.Double,
                    rIn as Lang.Number, rOut as Lang.Number,
                    width as Lang.Number, color as Graphics.ColorType) as Void {
+        _bar(dc, cx, cy, angle, rIn, rOut, width + 3, Graphics.COLOR_BLACK);
+        _bar(dc, cx, cy, angle, rIn, rOut, width, color);
+    }
+
+    function _bar(dc as Graphics.Dc, cx as Lang.Number, cy as Lang.Number,
+                  angle as Lang.Float or Lang.Double,
+                  rIn as Lang.Number, rOut as Lang.Number,
+                  width as Lang.Number, color as Graphics.ColorType) as Void {
         var s = Math.sin(angle);
         var c = Math.cos(angle);
         var hw = width / 2.0;
