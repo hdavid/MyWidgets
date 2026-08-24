@@ -8,7 +8,9 @@ import Toybox.WatchUi;
 
 // Full widget view. SELECT or tap cycles pages: one wind page per station
 // (compass rose, big average, gust, temp, pressure trend, sparkline), then
-// one tide page per location (TidePage — the Apple watch tide page).
+// ONE tide page (TidePage — the Apple watch tide page). The two stations
+// sit on the same bay, so a second tide page said the same thing with a
+// slightly different threshold; only the Moutiers one survives.
 class WindStationView extends WatchUi.View {
 
     var _station as Lang.Number = 0;
@@ -28,7 +30,7 @@ class WindStationView extends WatchUi.View {
     }
 
     function pageCount() as Lang.Number {
-        return WindData.STATIONS.size() + TideConstants.THRESHOLDS.size();
+        return WindData.STATIONS.size() + 1;
     }
 
     function nextStation() as Void {
@@ -75,9 +77,7 @@ class WindStationView extends WatchUi.View {
             if (_tideDay == null || (_tideDay as TidePage.Day).stale()) {
                 _tideDay = new TidePage.Day();
             }
-            var i = _station - WindData.STATIONS.size();
-            TidePage.draw(dc, _tideDay, i == 0 ? "Les Moutiers" : "La Bernerie",
-                          TideConstants.THRESHOLDS[i]);
+            TidePage.draw(dc, _tideDay, "Les Moutiers", TideConstants.THRESHOLDS[0]);
             return;
         }
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
