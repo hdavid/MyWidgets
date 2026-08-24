@@ -113,17 +113,13 @@ class TideFaceView extends WatchUi.WatchFace {
             if (ext[i][0] <= now) { prev = ext[i]; }
             else if (next == null) { next = ext[i]; }
         }
-        // Level and needle from the SAME extremes so they can never disagree.
-        // The needle is a tide clock: high water at 12, low water at 6, the
-        // hand sweeping clockwise — rising climbs the left side (6→12),
-        // falling descends the right (12→6). Its angle is the progress
-        // through the current half-cycle.
+        // Level and direction from the SAME extremes so the arrow and the
+        // water can never disagree: the tide is rising exactly when the next
+        // extreme is a high water.
         var rising = next != null ? next[2]
                                   : TideMath.table(now + 300) > h0;
-        var p = 0.5;
         var frac = 0.5;
         if (prev != null && next != null) {
-            p = (now - prev[0]).toFloat() / (next[0] - prev[0]);
             var lo = prev[1] < next[1] ? prev[1] : next[1];
             var hi = prev[1] < next[1] ? next[1] : prev[1];
             if (hi - lo > 0.1) {
@@ -132,9 +128,7 @@ class TideFaceView extends WatchUi.WatchFace {
                 if (frac > 1.0) { frac = 1.0; }
             }
         }
-        // Radians clockwise from 12: rising π→2π (left side), falling 0→π.
-        var angle = rising ? Math.PI * (1.0 + p) : Math.PI * p;
-        _tide = [now, frac, angle];
+        _tide = [now, frac, rising];
         return _tide;
     }
 
@@ -172,7 +166,7 @@ class TideFaceView extends WatchUi.WatchFace {
         _drawSteps(dc, cx + 92, cy);
         _drawDate(dc, cx - 84, cy);
         _drawWind(dc, cx, cy + 92);
-        _drawTideNeedle(dc, cx, cy, tide[2] as Lang.Float or Lang.Double);
+        _drawTideArrow(dc, w, cx, cy, waterY, tide[2] as Lang.Boolean);
         _drawHands(dc, cx, cy, h, Graphics.COLOR_WHITE);
     }
 
@@ -361,25 +355,53 @@ class TideFaceView extends WatchUi.WatchFace {
                     Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
     }
 
-    // The fourth needle, a tide clock hand: cyan, high water at 12, low at 6,
-    // sweeping clockwise — on the left half the tide is coming in, on the
-    // right half it is going out.
-    function _drawTideNeedle(dc as Graphics.Dc, cx as Lang.Number, cy as Lang.Number,
-                             angle as Lang.Float or Lang.Double) as Void {
-        var s = Math.sin(angle);
-        var c = Math.cos(angle);
-        var len = 72;
-        var tipX = cx + len * s;
-        var tipY = cy - len * c;
+    // A small arrow riding the waterline: pointing up while the tide comes
+    // in, down while it goes out. The x position is picked so the arrow never
+    // sits on a complication — center first, then sliding outward until the
+    // spot is clear of every slot circle at the waterline's current height.
+    function _drawTideArrow(dc as Graphics.Dc, w as Lang.Number,
+                            cx as Lang.Number, cy as Lang.Number,
+                            waterY as Lang.Number, rising as Lang.Boolean) as Void {
+        // Slot circles as [x, y, clearance] — clearance is the ring radius
+        // plus the arrow's half-width and a margin.
+        var blockers = [
+            [cx, cy - 92, 50],       // heart
+            [cx + 92, cy, 50],       // steps
+            [cx - 84, cy, 56],       // date text, a bit wider
+            [cx, cy + 92, 50]        // wind
+        ];
+        var candidates = [0, -70, 70, -110, 110, -145, 145];
+        var half = w / 2;
+        var x = cx;
+        for (var i = 0; i < candidates.size(); i++) {
+            var cand = cx + candidates[i];
+            // Stay inside the round screen at this height.
+            var dy = waterY - cy;
+            var chord2 = half * half - dy * dy;
+            if (chord2 < 900) { continue; }
+            if ((cand - cx).abs() > Math.sqrt(chord2) - 26) { continue; }
+            var clear = true;
+            for (var b = 0; b < blockers.size(); b++) {
+                var bx = blockers[b][0];
+                var by = blockers[b][1];
+                var dx = cand - bx;
+                var dby = waterY - by;
+                if (dx * dx + dby * dby < blockers[b][2] * blockers[b][2]) {
+                    clear = false;
+                    break;
+                }
+            }
+            if (clear) {
+                x = cand;
+                break;
+            }
+        }
         dc.setColor(NEEDLE, Graphics.COLOR_TRANSPARENT);
-        dc.setPenWidth(3);
-        dc.drawLine(cx, cy, tipX, tipY);
-        dc.setPenWidth(1);
-        dc.fillPolygon([
-            [tipX + 10 * s, tipY - 10 * c],
-            [tipX - 5 * c, tipY - 5 * s],
-            [tipX + 5 * c, tipY + 5 * s]
-        ]);
+        if (rising) {
+            dc.fillPolygon([[x, waterY - 14], [x - 9, waterY + 3], [x + 9, waterY + 3]]);
+        } else {
+            dc.fillPolygon([[x, waterY + 14], [x - 9, waterY - 3], [x + 9, waterY - 3]]);
+        }
     }
 
     // The default face's hands: plain rounded bars detached from the center
