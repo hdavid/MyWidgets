@@ -250,7 +250,7 @@ class TideFaceView extends WatchUi.WatchFace {
 
     function _drawNumerals(dc as Graphics.Dc, cx as Lang.Number, cy as Lang.Number,
                            w as Lang.Number) as Void {
-        var r = w * 36 / 100;
+        var r = w * 385 / 1000;
         var f = Graphics.FONT_SMALL;
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
         for (var n = 1; n <= 12; n++) {
