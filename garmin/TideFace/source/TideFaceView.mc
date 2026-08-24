@@ -166,12 +166,7 @@ class TideFaceView extends WatchUi.WatchFace {
         // threshold the water goes green — the tide widgets' "enough water"
         // color.
         var waterY = cy + ((0.42 - 0.84 * tide[1]) * h).toNumber();
-        var threshold = Application.Properties.getValue("tideThreshold");
-        var enough = false;
-        if (threshold instanceof Lang.Float || threshold instanceof Lang.Number) {
-            var t = threshold.toFloat();
-            enough = t > 0 && (tide[3] as Lang.Float) >= t;
-        }
+        var enough = _aboveThreshold(tide[3] as Lang.Float);
         dc.setColor(enough ? 0x0A3A22 : WATER, Graphics.COLOR_TRANSPARENT);
         dc.fillRectangle(0, waterY, w, h - waterY);
         dc.setColor(enough ? 0x2FA05A : WATERLINE, Graphics.COLOR_TRANSPARENT);
@@ -296,6 +291,17 @@ class TideFaceView extends WatchUi.WatchFace {
         }
     }
 
+    // Above the configured threshold the water renders green — the tide
+    // widgets' "enough water" color. 0 (or junk) disables.
+    function _aboveThreshold(h0 as Lang.Float) as Lang.Boolean {
+        var threshold = Application.Properties.getValue("tideThreshold");
+        if (threshold instanceof Lang.Float || threshold instanceof Lang.Number) {
+            var t = threshold.toFloat();
+            return t > 0 && h0 >= t;
+        }
+        return false;
+    }
+
     function _drawSlot(dc as Graphics.Dc, x as Lang.Number, y as Lang.Number,
                        kind as Lang.Number) as Void {
         switch (kind) {
@@ -310,13 +316,25 @@ class TideFaceView extends WatchUi.WatchFace {
     }
 
     // The Apple-watch-style tide complication: a mini tide clock — high water
-    // at 12, low at 6, a marker sweeping clockwise around the ring (left half
-    // coming in, right half going out) — with the current height centered.
+    // at 12, low at 6, a needle sweeping clockwise (left half coming in,
+    // right half going out), the current height centered, and the dial itself
+    // filling with water like the main background.
     function _drawTideDial(dc as Graphics.Dc, x as Lang.Number, y as Lang.Number) as Void {
         var tide = _tideState();
         var rising = tide[2] as Lang.Boolean;
         var p = tide[4] as Lang.Float;
         var angle = rising ? Math.PI * (1.0 + p) : Math.PI * p;
+        // Water inside the dial: a circle segment below the level, cut with a
+        // rectangular clip over a disc fill.
+        var frac = tide[1] as Lang.Float;
+        var waterY = (y + 34 - frac * 68).toNumber();
+        var enough = _aboveThreshold(tide[3] as Lang.Float);
+        dc.setClip(x - 35, waterY, 70, y + 35 - waterY + 1);
+        dc.setColor(enough ? 0x0A3A22 : WATER, Graphics.COLOR_TRANSPARENT);
+        dc.fillCircle(x, y, 34);
+        dc.setColor(enough ? 0x2FA05A : WATERLINE, Graphics.COLOR_TRANSPARENT);
+        dc.fillRectangle(x - 35, waterY, 70, 2);
+        dc.clearClip();
         dc.setPenWidth(4);
         dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
         dc.drawCircle(x, y, 36);
@@ -325,9 +343,13 @@ class TideFaceView extends WatchUi.WatchFace {
         dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
         dc.fillRectangle(x - 1, y - 40, 3, 8);
         dc.fillRectangle(x - 1, y + 32, 3, 8);
-        // The marker riding the ring.
+        // A proper tide-clock needle from the dial's center, drawn before the
+        // height so the numbers sit on top of it.
         dc.setColor(NEEDLE, Graphics.COLOR_TRANSPARENT);
-        dc.fillCircle(x + 36 * Math.sin(angle), y - 36 * Math.cos(angle), 5);
+        dc.setPenWidth(3);
+        dc.drawLine(x, y, x + 31 * Math.sin(angle), y - 31 * Math.cos(angle));
+        dc.setPenWidth(1);
+        dc.fillCircle(x, y, 3);
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
         dc.drawText(x, y, Graphics.FONT_TINY,
                     (tide[3] as Lang.Float).format("%.1f") + "m",
@@ -492,11 +514,9 @@ class TideFaceView extends WatchUi.WatchFace {
         var minuteA = clock.min * Math.PI / 30.0;
         var hourA = (clock.hour % 12 + clock.min / 60.0) * Math.PI / 6.0;
         _hand(dc, cx, cy, hourA, 34, h * 28 / 100, 8, color);
-        // The minute hand is hollow on the original: a white outline around a
-        // dark core.
-        var mLen = h * 46 / 100;
-        _hand(dc, cx, cy, minuteA, 34, mLen, 7, color);
-        _bar(dc, cx, cy, minuteA, 34 + 3, mLen - 3, 3, Graphics.COLOR_BLACK);
+        // The minute hand is hollow, and truly so: two rails with nothing in
+        // between, so whatever it crosses shows through the middle.
+        _outlineHand(dc, cx, cy, minuteA, 34, h * 46 / 100, 7, color);
         if (!_sleep) {
             // Hairline and silver like the original — no dark halo, it is
             // thin enough to never need one.
@@ -512,6 +532,27 @@ class TideFaceView extends WatchUi.WatchFace {
             dc.drawCircle(rx, ry, 7);
             dc.setPenWidth(1);
         }
+    }
+
+    // A hollow bar: just the two long edges and rounded end rings, interior
+    // untouched (transparent).
+    function _outlineHand(dc as Graphics.Dc, cx as Lang.Number, cy as Lang.Number,
+                          angle as Lang.Float or Lang.Double,
+                          rIn as Lang.Number, rOut as Lang.Number,
+                          width as Lang.Number, color as Graphics.ColorType) as Void {
+        var s = Math.sin(angle);
+        var c = Math.cos(angle);
+        var off = (width - 2) / 2.0;
+        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        dc.setPenWidth(2);
+        for (var k = 0; k < 2; k++) {
+            var o = k == 0 ? -off : off;
+            dc.drawLine(cx + rIn * s + o * c, cy - rIn * c + o * s,
+                        cx + rOut * s + o * c, cy - rOut * c + o * s);
+        }
+        dc.drawCircle(cx + rIn * s, cy - rIn * c, off);
+        dc.drawCircle(cx + rOut * s, cy - rOut * c, off);
+        dc.setPenWidth(1);
     }
 
     // One bar from rIn to rOut along `angle` (radians clockwise from 12),
