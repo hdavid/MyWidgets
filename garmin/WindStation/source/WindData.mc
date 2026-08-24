@@ -205,6 +205,15 @@ module WindData {
         return v.toFloat().format("%.1f");
     }
 
+    // Human words for the Communications error codes people actually hit.
+    // CIQ web requests go through the paired phone's Garmin Connect, so the
+    // overwhelmingly common failure is "no phone in reach" (-104).
+    function errorText(code as Lang.Number) as Lang.String {
+        if (code == -104) { return "No phone link"; }
+        if (code == -300) { return "Timed out"; }
+        return "Error " + code;
+    }
+
     // Age of a snapshot in minutes, for the staleness footer.
     function ageMinutes(snap) as Lang.Number or Null {
         if (!(snap instanceof Lang.Dictionary)) { return null; }

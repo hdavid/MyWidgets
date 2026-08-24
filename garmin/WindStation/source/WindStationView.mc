@@ -67,7 +67,7 @@ class WindStationView extends WatchUi.View {
                 _error = "Bad response";
             }
         } else {
-            _error = "Error " + code;
+            _error = WindData.errorText(code);
         }
         WatchUi.requestUpdate();
     }

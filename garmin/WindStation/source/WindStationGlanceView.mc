@@ -35,7 +35,7 @@ class WindStationGlanceView extends WatchUi.GlanceView {
         } else if (code == -1000) {
             _errors[station] = "set token";
         } else {
-            _errors[station] = "err " + code;
+            _errors[station] = code == -104 ? "no phone" : "err " + code;
         }
         WatchUi.requestUpdate();
     }
