@@ -113,14 +113,17 @@ class TideFaceView extends WatchUi.WatchFace {
             if (ext[i][0] <= now) { prev = ext[i]; }
             else if (next == null) { next = ext[i]; }
         }
-        // Direction and level from the SAME extremes, so the needle and the
-        // background can never disagree: the tide is rising exactly when the
-        // next extreme is a high water. (A sampled derivative flips up to its
-        // sampling interval early — right at the turn, where everyone looks.)
+        // Level and needle from the SAME extremes so they can never disagree.
+        // The needle is a tide clock: high water at 12, low water at 6, the
+        // hand sweeping clockwise — rising climbs the left side (6→12),
+        // falling descends the right (12→6). Its angle is the progress
+        // through the current half-cycle.
         var rising = next != null ? next[2]
                                   : TideMath.table(now + 300) > h0;
+        var p = 0.5;
         var frac = 0.5;
         if (prev != null && next != null) {
+            p = (now - prev[0]).toFloat() / (next[0] - prev[0]);
             var lo = prev[1] < next[1] ? prev[1] : next[1];
             var hi = prev[1] < next[1] ? next[1] : prev[1];
             if (hi - lo > 0.1) {
@@ -129,7 +132,9 @@ class TideFaceView extends WatchUi.WatchFace {
                 if (frac > 1.0) { frac = 1.0; }
             }
         }
-        _tide = [now, frac, rising];
+        // Radians clockwise from 12: rising π→2π (left side), falling 0→π.
+        var angle = rising ? Math.PI * (1.0 + p) : Math.PI * p;
+        _tide = [now, frac, angle];
         return _tide;
     }
 
@@ -167,7 +172,7 @@ class TideFaceView extends WatchUi.WatchFace {
         _drawSteps(dc, cx + 92, cy);
         _drawDate(dc, cx - 92, cy);
         _drawWind(dc, cx, cy + 92);
-        _drawTideNeedle(dc, cx, cy, tide[2]);
+        _drawTideNeedle(dc, cx, cy, tide[2] as Lang.Float or Lang.Double);
         _drawHands(dc, cx, cy, h, Graphics.COLOR_WHITE);
     }
 
@@ -177,8 +182,8 @@ class TideFaceView extends WatchUi.WatchFace {
     // them), so the digits are drawn as rotated stroke polylines instead.
     function _drawTicks(dc as Graphics.Dc, cx as Lang.Number, cy as Lang.Number,
                         w as Lang.Number, sleeping as Lang.Boolean) as Void {
-        var rDot = w * 475 / 1000;
-        var rNum = w * 452 / 1000;
+        var rDot = w * 478 / 1000;
+        var rNum = w * 462 / 1000;
         for (var m = 0; m < 60; m++) {
             var a = m * Math.PI / 30.0;
             if (m % 5 == 0) {
@@ -213,35 +218,37 @@ class TideFaceView extends WatchUi.WatchFace {
         [[[3, -6], [-3, -6], [-3, 6], [3, 6], [3, 0], [-3, 0]]]              // 6
     ];
 
-    // Two-digit label centered on (x, y), rotated by `rot` radians.
+    // Two-digit label centered on (x, y), rotated by `rot` radians. Scaled
+    // down and hairline-thin so the track stays in the background, clear of
+    // the big hour numerals.
     function _minuteLabel(dc as Graphics.Dc, value as Lang.Number,
                           x as Lang.Float or Lang.Double, y as Lang.Float or Lang.Double,
                           rot as Lang.Float or Lang.Double) as Void {
+        var k = 0.75;
         var s = Math.sin(rot);
         var c = Math.cos(rot);
-        dc.setPenWidth(2);
+        dc.setPenWidth(1);
         var digits = [value / 10, value % 10];
         for (var d = 0; d < 2; d++) {
-            var offX = d == 0 ? -5 : 5;   // digit centers along the baseline
+            var offX = d == 0 ? -4.5 : 4.5;   // digit centers along the baseline
             var strokes = DIGIT_STROKES[digits[d]];
             for (var i = 0; i < strokes.size(); i++) {
                 var line = strokes[i];
                 for (var j = 1; j < line.size(); j++) {
-                    var ax = line[j - 1][0] + offX;
-                    var ay = line[j - 1][1];
-                    var bx = line[j][0] + offX;
-                    var by = line[j][1];
+                    var ax = line[j - 1][0] * k + offX;
+                    var ay = line[j - 1][1] * k;
+                    var bx = line[j][0] * k + offX;
+                    var by = line[j][1] * k;
                     dc.drawLine(x + ax * c - ay * s, y + ax * s + ay * c,
                                 x + bx * c - by * s, y + bx * s + by * c);
                 }
             }
         }
-        dc.setPenWidth(1);
     }
 
     function _drawNumerals(dc as Graphics.Dc, cx as Lang.Number, cy as Lang.Number,
                            w as Lang.Number) as Void {
-        var r = w * 38 / 100;
+        var r = w * 36 / 100;
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
         for (var n = 1; n <= 12; n++) {
             var a = n * Math.PI / 6.0;
@@ -331,20 +338,25 @@ class TideFaceView extends WatchUi.WatchFace {
                     Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
     }
 
-    // The fourth needle: cyan, straight up while the tide rises, straight
-    // down while it falls, with a small arrowhead so the direction reads at
-    // a glance.
+    // The fourth needle, a tide clock hand: cyan, high water at 12, low at 6,
+    // sweeping clockwise — on the left half the tide is coming in, on the
+    // right half it is going out.
     function _drawTideNeedle(dc as Graphics.Dc, cx as Lang.Number, cy as Lang.Number,
-                             rising as Lang.Boolean) as Void {
-        var dir = rising ? -1 : 1;   // screen y grows downward
-        var tip = cy + dir * 44;     // arrowhead stays clear of the slot rings
+                             angle as Lang.Float or Lang.Double) as Void {
+        var s = Math.sin(angle);
+        var c = Math.cos(angle);
+        var len = 72;
+        var tipX = cx + len * s;
+        var tipY = cy - len * c;
         dc.setColor(NEEDLE, Graphics.COLOR_TRANSPARENT);
         dc.setPenWidth(3);
-        dc.drawLine(cx, cy, cx, tip);
+        dc.drawLine(cx, cy, tipX, tipY);
         dc.setPenWidth(1);
-        dc.fillPolygon([[cx, tip + dir * 10],
-                        [cx - 6, tip - dir * 2],
-                        [cx + 6, tip - dir * 2]]);
+        dc.fillPolygon([
+            [tipX + 10 * s, tipY - 10 * c],
+            [tipX - 5 * c, tipY - 5 * s],
+            [tipX + 5 * c, tipY + 5 * s]
+        ]);
     }
 
     // The default face's hands: plain rounded bars detached from the center
@@ -358,7 +370,7 @@ class TideFaceView extends WatchUi.WatchFace {
         var minuteA = clock.min * Math.PI / 30.0;
         var hourA = (clock.hour % 12 + clock.min / 60.0) * Math.PI / 6.0;
         _hand(dc, cx, cy, hourA, 34, h * 28 / 100, 8, color);
-        _hand(dc, cx, cy, minuteA, 34, h * 43 / 100, 6, color);
+        _hand(dc, cx, cy, minuteA, 34, h * 46 / 100, 5, color);
         if (!_sleep) {
             var secondA = clock.sec * Math.PI / 30.0;
             var sLen = h * 45 / 100;
