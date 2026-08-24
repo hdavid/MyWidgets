@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Analog watch face in the style of the Venu's default face, plus the tide:
+     the background is a water level (top = high water, bottom = low water on
+     the current cycle, Pornic harmonics computed offline) and a fourth needle
+     points up or down with the tide's direction. The bottom complication slot
+     shows Moutiers wind, subscribed from the Wind Station widget's published
+     complication — the face itself never touches the network. -->
+<iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
+    <iq:application id="4e285f607424411ab397ade3d38e1467" type="watchface"
+                    name="@Strings.AppName" entry="TideFaceApp"
+                    launcherIcon="@Drawables.LauncherIcon" minApiLevel="4.2.0">
+        <iq:products>
+            <!-- dad -->
+            <iq:product id="venu2plus"/>
+            <!-- bro -->
+            <iq:product id="fenix7x"/>
+            <!-- compile/simulator test target (device files always present) -->
+            <iq:product id="fenix847mm"/>
+        </iq:products>
+        <iq:permissions>
+            <iq:uses-permission id="ComplicationSubscriber"/>
+        </iq:permissions>
+        <iq:languages>
+            <iq:language>eng</iq:language>
+        </iq:languages>
+        <iq:barrels/>
+    </iq:application>
+</iq:manifest>

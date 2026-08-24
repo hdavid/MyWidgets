@@ -1,0 +1,5 @@
+project.manifest = manifest.xml
+
+# The tide engine and its generated constants are shared with the Wind Station
+# widget — same harmonics, one source of truth.
+base.sourcePath = source;../WindStation/source/TideMath.mc;../WindStation/source/TideConstants.mc
