@@ -88,19 +88,32 @@ class TideFaceView extends WatchUi.WatchFace {
     }
 
     // Touch on slot `index` (top/right/left/bottom): wind and tide slots open
-    // the Wind Station app through its complication. True when handled.
+    // the Wind Station app through its complication; heart, steps, date and
+    // battery open the matching native page through the system complication —
+    // the same behavior as the original face. True when handled.
     function openSlotApp(index as Lang.Number) as Lang.Boolean {
         if (!(Toybox has :Complications)) { return false; }
         var kind = SLOT_DEFAULTS[index];
         var v = Application.Properties.getValue(SLOT_KEYS[index]);
         if (v instanceof Lang.Number) { kind = v; }
         var id = null;
-        if (kind == 3 || kind == 4) { id = _windIds[kind - 3]; }
-        // The tide dial belongs to the same app — any subscribed wind
-        // complication is a door to it.
-        if (kind == 7) { id = _windIds[0] != null ? _windIds[0] : _windIds[1]; }
-        if (id == null) { return false; }
         try {
+            if (kind == 0) {
+                id = new Toybox.Complications.Id(Toybox.Complications.COMPLICATION_TYPE_HEART_RATE);
+            } else if (kind == 1) {
+                id = new Toybox.Complications.Id(Toybox.Complications.COMPLICATION_TYPE_STEPS);
+            } else if (kind == 2) {
+                id = new Toybox.Complications.Id(Toybox.Complications.COMPLICATION_TYPE_DATE);
+            } else if (kind == 5) {
+                id = new Toybox.Complications.Id(Toybox.Complications.COMPLICATION_TYPE_BATTERY);
+            } else if (kind == 3 || kind == 4) {
+                id = _windIds[kind - 3];
+            } else if (kind == 7) {
+                // The tide dial belongs to the same app — any subscribed wind
+                // complication is a door to it.
+                id = _windIds[0] != null ? _windIds[0] : _windIds[1];
+            }
+            if (id == null) { return false; }
             Toybox.Complications.exitTo(id);
             return true;
         } catch (e) {
