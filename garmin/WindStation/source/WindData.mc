@@ -19,7 +19,7 @@ import Toybox.Time;
 //
 // The headline "avg" is a 5-minute mean — a lone instant reading is too
 // jumpy to act on. It reads the one_minute retention policy's downsampled
-// mean_value field (what the Grafana dashboards show) rather than averaging
+// `value` field (what the Grafana dashboards show) rather than averaging
 // raw autogen samples. "inst" keeps the latest raw instant sample for the
 // widget view's small "now" line and for the measured-at timestamp (the
 // mean's own timestamp is the window START, ~5 min stale).
@@ -37,7 +37,7 @@ module WindData {
             "base" => "https://moutiers.motscousus.com/grafana",
             "tokenKey" => "tokenMoutiers",
             "datasourceId" => 1,
-            "avg" => "SELECT mean(mean_value) * 1.0 * 0.54 FROM one_minute.ws90_weather_wind_avg_km_h WHERE time > now() - 5m",
+            "avg" => "SELECT mean(value) * 1.0 * 0.54 FROM one_minute.ws90_weather_wind_avg_km_h WHERE time > now() - 5m",
             "inst" => "SELECT last(value) * 1.0 * 0.54 FROM autogen.ws90_weather_wind_avg_km_h",
             "gust" => "SELECT last(value) * 1.0 * 0.54 FROM autogen.ws90_weather_wind_max_km_h",
             "dir" => "SELECT last(value) FROM autogen.ws90_weather_wind_dir_deg",
@@ -51,7 +51,7 @@ module WindData {
             "base" => "https://bernerie.motscousus.com/grafana",
             "tokenKey" => "tokenBernerie",
             "datasourceId" => 1,
-            "avg" => "SELECT mean(mean_value) * 1.0 * 0.54 FROM one_minute.ws90_weather_wind_avg_km_h WHERE time > now() - 5m",
+            "avg" => "SELECT mean(value) * 1.0 * 0.54 FROM one_minute.ws90_weather_wind_avg_km_h WHERE time > now() - 5m",
             "inst" => "SELECT last(value) * 1.0 * 0.54 FROM autogen.ws90_weather_wind_avg_km_h",
             "gust" => "SELECT last(value) * 1.0 * 0.54 FROM autogen.ws90_weather_wind_max_km_h",
             "dir" => "SELECT last(value) FROM autogen.ws90_weather_wind_dir_deg",
