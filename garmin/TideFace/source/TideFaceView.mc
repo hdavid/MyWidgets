@@ -170,7 +170,7 @@ class TideFaceView extends WatchUi.WatchFace {
         _drawNumerals(dc, cx, cy, w);
         _drawHeart(dc, cx, cy - 92);
         _drawSteps(dc, cx + 92, cy);
-        _drawDate(dc, cx - 92, cy);
+        _drawDate(dc, cx - 84, cy);
         _drawWind(dc, cx, cy + 92);
         _drawTideNeedle(dc, cx, cy, tide[2] as Lang.Float or Lang.Double);
         _drawHands(dc, cx, cy, h, Graphics.COLOR_WHITE);
@@ -257,13 +257,28 @@ class TideFaceView extends WatchUi.WatchFace {
     function _drawNumerals(dc as Graphics.Dc, cx as Lang.Number, cy as Lang.Number,
                            w as Lang.Number) as Void {
         var r = w * 36 / 100;
+        var f = Graphics.FONT_SMALL;
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
         for (var n = 1; n <= 12; n++) {
             var a = n * Math.PI / 6.0;
             var x = cx + r * Math.sin(a);
             var y = cy - r * Math.cos(a);
-            dc.drawText(x, y, Graphics.FONT_MEDIUM, n.toString(),
-                        Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+            if (n < 10) {
+                dc.drawText(x, y, f, n.toString(),
+                            Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+                continue;
+            }
+            // Two-digit numerals get manual kerning — the bitmap font's own
+            // tracking is wider than the original face's.
+            var d1 = "1";
+            var d2 = (n % 10).toString();
+            var kern = 4;
+            var w1 = dc.getTextWidthInPixels(d1, f);
+            var total = w1 + dc.getTextWidthInPixels(d2, f) - kern;
+            dc.drawText(x - total / 2, y, f, d1,
+                        Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
+            dc.drawText(x - total / 2 + w1 - kern, y, f, d2,
+                        Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
         }
     }
 
@@ -272,7 +287,7 @@ class TideFaceView extends WatchUi.WatchFace {
     function _drawHeart(dc as Graphics.Dc, x as Lang.Number, y as Lang.Number) as Void {
         var colors = [Graphics.COLOR_RED, Graphics.COLOR_ORANGE, Graphics.COLOR_YELLOW,
                       Graphics.COLOR_GREEN, Graphics.COLOR_BLUE, Graphics.COLOR_PURPLE];
-        dc.setPenWidth(3);
+        dc.setPenWidth(5);
         for (var i = 0; i < 6; i++) {
             dc.setColor(colors[i], Graphics.COLOR_TRANSPARENT);
             dc.drawArc(x, y, 36, Graphics.ARC_CLOCKWISE, 90 - i * 60, 90 - (i + 1) * 60);
@@ -293,7 +308,7 @@ class TideFaceView extends WatchUi.WatchFace {
         var info = ActivityMonitor.getInfo();
         var steps = info.steps == null ? 0 : info.steps;
         var goal = info.stepGoal == null || info.stepGoal == 0 ? 10000 : info.stepGoal;
-        dc.setPenWidth(3);
+        dc.setPenWidth(5);
         dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
         dc.drawCircle(x, y, 36);
         var frac = steps.toFloat() / goal;
@@ -325,7 +340,7 @@ class TideFaceView extends WatchUi.WatchFace {
     // Moutiers wind from the Wind Station complication: "12.3kn NW" split
     // over two lines inside the ring.
     function _drawWind(dc as Graphics.Dc, x as Lang.Number, y as Lang.Number) as Void {
-        dc.setPenWidth(2);
+        dc.setPenWidth(4);
         dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
         dc.drawCircle(x, y, 36);
         dc.setPenWidth(1);
@@ -386,14 +401,14 @@ class TideFaceView extends WatchUi.WatchFace {
         if (!_sleep) {
             var secondA = clock.sec * Math.PI / 30.0;
             var sLen = h * 45 / 100;
-            _hand(dc, cx, cy, secondA, 14, sLen - 16, 3, color);
-            var rx = cx + (sLen - 8) * Math.sin(secondA);
-            var ry = cy - (sLen - 8) * Math.cos(secondA);
+            _hand(dc, cx, cy, secondA, 14, sLen - 14, 2, color);
+            var rx = cx + (sLen - 7) * Math.sin(secondA);
+            var ry = cy - (sLen - 7) * Math.cos(secondA);
             dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_TRANSPARENT);
-            dc.fillCircle(rx, ry, 8);
+            dc.fillCircle(rx, ry, 7);
             dc.setColor(color, Graphics.COLOR_TRANSPARENT);
-            dc.setPenWidth(3);
-            dc.drawCircle(rx, ry, 8);
+            dc.setPenWidth(2);
+            dc.drawCircle(rx, ry, 7);
             dc.setPenWidth(1);
         }
         dc.setColor(color, Graphics.COLOR_TRANSPARENT);
