@@ -462,20 +462,20 @@ class TideFaceView extends WatchUi.WatchFace {
         _hand(dc, cx, cy, minuteA, 34, mLen, 7, color);
         _bar(dc, cx, cy, minuteA, 34 + 3, mLen - 3, 3, Graphics.COLOR_BLACK);
         if (!_sleep) {
+            // Hairline and silver like the original — no dark halo, it is
+            // thin enough to never need one.
             var secondA = clock.sec * Math.PI / 30.0;
             var sLen = h * 45 / 100;
-            _hand(dc, cx, cy, secondA, 14, sLen - 14, 2, color);
+            _bar(dc, cx, cy, secondA, 14, sLen - 14, 2, Graphics.COLOR_LT_GRAY);
             var rx = cx + (sLen - 7) * Math.sin(secondA);
             var ry = cy - (sLen - 7) * Math.cos(secondA);
             dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_TRANSPARENT);
             dc.fillCircle(rx, ry, 7);
-            dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+            dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
             dc.setPenWidth(2);
             dc.drawCircle(rx, ry, 7);
             dc.setPenWidth(1);
         }
-        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
-        dc.fillCircle(cx, cy, 3);
     }
 
     // One bar from rIn to rOut along `angle` (radians clockwise from 12),
