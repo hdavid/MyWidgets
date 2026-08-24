@@ -45,5 +45,8 @@
                 <listEntry value="6">@Strings.OptNothing</listEntry>
             </settingConfig>
         </setting>
+        <setting propertyKey="@Properties.tideThreshold" title="@Strings.TideThreshold">
+            <settingConfig type="numeric" min="0" max="7"/>
+        </setting>
     </settings>
 </resources>

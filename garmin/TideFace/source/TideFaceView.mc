@@ -135,7 +135,7 @@ class TideFaceView extends WatchUi.WatchFace {
                 if (frac > 1.0) { frac = 1.0; }
             }
         }
-        _tide = [now, frac, rising];
+        _tide = [now, frac, rising, h0];
         return _tide;
     }
 
@@ -160,11 +160,19 @@ class TideFaceView extends WatchUi.WatchFace {
         var tide = _tideState();
 
         // Water first, everything else on top. The surface runs 92 % of the
-        // height (low water) up to 8 % (high water).
+        // height (low water) up to 8 % (high water). Above the configured
+        // threshold the water goes green — the tide widgets' "enough water"
+        // color.
         var waterY = cy + ((0.42 - 0.84 * tide[1]) * h).toNumber();
-        dc.setColor(WATER, Graphics.COLOR_TRANSPARENT);
+        var threshold = Application.Properties.getValue("tideThreshold");
+        var enough = false;
+        if (threshold instanceof Lang.Float || threshold instanceof Lang.Number) {
+            var t = threshold.toFloat();
+            enough = t > 0 && (tide[3] as Lang.Float) >= t;
+        }
+        dc.setColor(enough ? 0x0A3A22 : WATER, Graphics.COLOR_TRANSPARENT);
         dc.fillRectangle(0, waterY, w, h - waterY);
-        dc.setColor(WATERLINE, Graphics.COLOR_TRANSPARENT);
+        dc.setColor(enough ? 0x2FA05A : WATERLINE, Graphics.COLOR_TRANSPARENT);
         dc.fillRectangle(0, waterY - 1, w, 3);
 
         _drawTicks(dc, cx, cy, w, false);

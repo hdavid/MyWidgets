@@ -8,5 +8,8 @@
         <property id="slotRight" type="number">1</property>
         <property id="slotLeft" type="number">2</property>
         <property id="slotBottom" type="number">3</property>
+        <!-- Water turns green when the tide (table metres) is above this —
+             same semantics as the tide widgets' threshold. 0 disables. -->
+        <property id="tideThreshold" type="float">3.8</property>
     </properties>
 </resources>
