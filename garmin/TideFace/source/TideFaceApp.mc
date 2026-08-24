@@ -11,4 +11,9 @@ class TideFaceApp extends Application.AppBase {
     function getInitialView() as [WatchUi.Views] or [WatchUi.Views, WatchUi.InputDelegates] {
         return [new TideFaceView()];
     }
+
+    // Slot assignments changed in the Connect IQ phone app — repaint.
+    function onSettingsChanged() as Void {
+        WatchUi.requestUpdate();
+    }
 }

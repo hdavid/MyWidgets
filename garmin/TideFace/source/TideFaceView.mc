@@ -28,9 +28,15 @@ class TideFaceView extends WatchUi.WatchFace {
     const WATERLINE = 0x2E7EA6;  // the line itself
     const NEEDLE = 0x00AAFF;     // tide-direction needle
 
+    // What each slot shows, indexed top/right/left/bottom — see
+    // resources/settings. 0 heart, 1 steps, 2 date, 3 wind Moutiers,
+    // 4 wind Bernerie, 5 battery, 6 nothing.
+    const SLOT_KEYS = ["slotTop", "slotRight", "slotLeft", "slotBottom"];
+    const SLOT_DEFAULTS = [0, 1, 2, 3];
+
     var _sleep as Lang.Boolean = false;
-    var _windId = null;          // Complications.Id of "Moutiers wind"
-    var _wind as Lang.String or Null = null;
+    var _windIds = [null, null];  // Complications.Id per station (MOU, BER)
+    var _winds = [null, null] as Lang.Array;
     var _windRetry as Lang.Number = 0;
     // [computedAt, frac 0..1 (low..high water), rising] — refreshed every
     // 10 min; extremes over ±9 h bracket the current cycle whatever the hour.
@@ -61,42 +67,43 @@ class TideFaceView extends WatchUi.WatchFace {
         try {
             Toybox.Complications.registerComplicationChangeCallback(
                 self.method(:onComplicationChanged));
+            var labels = ["Moutiers wind", "Bernerie wind"];
             var it = Toybox.Complications.getComplications();
             var c = it.next();
             while (c != null) {
-                if (c.longLabel != null && c.longLabel.equals("Moutiers wind")) {
-                    _windId = c.complicationId;
-                    Toybox.Complications.subscribeToUpdates(_windId);
-                    break;
+                for (var i = 0; i < 2; i++) {
+                    if (_windIds[i] == null && c.longLabel != null
+                        && c.longLabel.equals(labels[i])) {
+                        _windIds[i] = c.complicationId;
+                        Toybox.Complications.subscribeToUpdates(c.complicationId);
+                    }
                 }
                 c = it.next();
             }
-        } catch (e) {
-            _windId = null;
-        }
+        } catch (e) {}
     }
 
     function onComplicationChanged(id as Toybox.Complications.Id) as Void {
         WatchUi.requestUpdate();
     }
 
-    function _windText() as Lang.String or Null {
+    function _windText(station as Lang.Number) as Lang.String or Null {
         // The Wind Station widget may not have published yet when the face
         // first looks (fresh install, reboot) — look again every ~5 minutes
         // until the complication exists.
-        if (_windId == null) {
+        if (_windIds[station] == null) {
             _windRetry++;
             if (_windRetry >= 5) {
                 _windRetry = 0;
                 _subscribeWind();
             }
         }
-        if (_windId == null) { return _wind; }
+        if (_windIds[station] == null) { return _winds[station]; }
         try {
-            var c = Toybox.Complications.getComplication(_windId);
-            if (c.value != null) { _wind = c.value.toString(); }
+            var c = Toybox.Complications.getComplication(_windIds[station]);
+            if (c.value != null) { _winds[station] = c.value.toString(); }
         } catch (e) {}
-        return _wind;
+        return _winds[station];
     }
 
     // MARK: Tide state
@@ -162,10 +169,13 @@ class TideFaceView extends WatchUi.WatchFace {
 
         _drawTicks(dc, cx, cy, w, false);
         _drawNumerals(dc, cx, cy, w);
-        _drawHeart(dc, cx, cy - 92);
-        _drawSteps(dc, cx + 92, cy);
-        _drawDate(dc, cx - 84, cy);
-        _drawWind(dc, cx, cy + 92);
+        var positions = [[cx, cy - 92], [cx + 92, cy], [cx - 84, cy], [cx, cy + 92]];
+        for (var i = 0; i < 4; i++) {
+            var kind = SLOT_DEFAULTS[i];
+            var v = Application.Properties.getValue(SLOT_KEYS[i]);
+            if (v instanceof Lang.Number) { kind = v; }
+            _drawSlot(dc, positions[i][0], positions[i][1], kind);
+        }
         _drawTideArrow(dc, w, cx, cy, waterY, tide[2] as Lang.Boolean);
         _drawHands(dc, cx, cy, h, Graphics.COLOR_WHITE);
     }
@@ -276,6 +286,36 @@ class TideFaceView extends WatchUi.WatchFace {
         }
     }
 
+    function _drawSlot(dc as Graphics.Dc, x as Lang.Number, y as Lang.Number,
+                       kind as Lang.Number) as Void {
+        switch (kind) {
+        case 0: _drawHeart(dc, x, y); break;
+        case 1: _drawSteps(dc, x, y); break;
+        case 2: _drawDate(dc, x, y); break;
+        case 3: _drawWind(dc, x, y, 0); break;
+        case 4: _drawWind(dc, x, y, 1); break;
+        case 5: _drawBattery(dc, x, y); break;
+        }
+    }
+
+    // Battery: ring filled proportionally, orange under 20 %.
+    function _drawBattery(dc as Graphics.Dc, x as Lang.Number, y as Lang.Number) as Void {
+        var level = System.getSystemStats().battery;
+        dc.setPenWidth(5);
+        dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
+        dc.drawCircle(x, y, 36);
+        if (level > 1) {
+            dc.setColor(level < 20 ? Graphics.COLOR_ORANGE : Graphics.COLOR_GREEN,
+                        Graphics.COLOR_TRANSPARENT);
+            dc.drawArc(x, y, 36, Graphics.ARC_CLOCKWISE, 90,
+                       90 - (level * 3.6).toNumber());
+        }
+        dc.setPenWidth(1);
+        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(x, y, Graphics.FONT_TINY, level.format("%d") + "%",
+                    Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+    }
+
     // Heart rate with the default face's rainbow ring and a drawn heart —
     // Garmin fonts have no ♥ glyph (they render tofu).
     function _drawHeart(dc as Graphics.Dc, x as Lang.Number, y as Lang.Number) as Void {
@@ -331,14 +371,15 @@ class TideFaceView extends WatchUi.WatchFace {
                     Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
     }
 
-    // Moutiers wind from the Wind Station complication: "12.3kn NW" split
+    // Station wind from the Wind Station complication: "12.3kn NW" split
     // over two lines inside the ring.
-    function _drawWind(dc as Graphics.Dc, x as Lang.Number, y as Lang.Number) as Void {
+    function _drawWind(dc as Graphics.Dc, x as Lang.Number, y as Lang.Number,
+                       station as Lang.Number) as Void {
         dc.setPenWidth(4);
         dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
         dc.drawCircle(x, y, 36);
         dc.setPenWidth(1);
-        var text = _windText();
+        var text = _windText(station);
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
         if (text == null) {
             dc.drawText(x, y, Graphics.FONT_TINY, "--",

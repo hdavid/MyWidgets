@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resources>
+    <settings>
+        <setting propertyKey="@Properties.slotTop" title="@Strings.SlotTop">
+            <settingConfig type="list">
+                <listEntry value="0">@Strings.OptHeart</listEntry>
+                <listEntry value="1">@Strings.OptSteps</listEntry>
+                <listEntry value="2">@Strings.OptDate</listEntry>
+                <listEntry value="3">@Strings.OptWindMoutiers</listEntry>
+                <listEntry value="4">@Strings.OptWindBernerie</listEntry>
+                <listEntry value="5">@Strings.OptBattery</listEntry>
+                <listEntry value="6">@Strings.OptNothing</listEntry>
+            </settingConfig>
+        </setting>
+        <setting propertyKey="@Properties.slotRight" title="@Strings.SlotRight">
+            <settingConfig type="list">
+                <listEntry value="0">@Strings.OptHeart</listEntry>
+                <listEntry value="1">@Strings.OptSteps</listEntry>
+                <listEntry value="2">@Strings.OptDate</listEntry>
+                <listEntry value="3">@Strings.OptWindMoutiers</listEntry>
+                <listEntry value="4">@Strings.OptWindBernerie</listEntry>
+                <listEntry value="5">@Strings.OptBattery</listEntry>
+                <listEntry value="6">@Strings.OptNothing</listEntry>
+            </settingConfig>
+        </setting>
+        <setting propertyKey="@Properties.slotLeft" title="@Strings.SlotLeft">
+            <settingConfig type="list">
+                <listEntry value="0">@Strings.OptHeart</listEntry>
+                <listEntry value="1">@Strings.OptSteps</listEntry>
+                <listEntry value="2">@Strings.OptDate</listEntry>
+                <listEntry value="3">@Strings.OptWindMoutiers</listEntry>
+                <listEntry value="4">@Strings.OptWindBernerie</listEntry>
+                <listEntry value="5">@Strings.OptBattery</listEntry>
+                <listEntry value="6">@Strings.OptNothing</listEntry>
+            </settingConfig>
+        </setting>
+        <setting propertyKey="@Properties.slotBottom" title="@Strings.SlotBottom">
+            <settingConfig type="list">
+                <listEntry value="0">@Strings.OptHeart</listEntry>
+                <listEntry value="1">@Strings.OptSteps</listEntry>
+                <listEntry value="2">@Strings.OptDate</listEntry>
+                <listEntry value="3">@Strings.OptWindMoutiers</listEntry>
+                <listEntry value="4">@Strings.OptWindBernerie</listEntry>
+                <listEntry value="5">@Strings.OptBattery</listEntry>
+                <listEntry value="6">@Strings.OptNothing</listEntry>
+            </settingConfig>
+        </setting>
+    </settings>
+</resources>

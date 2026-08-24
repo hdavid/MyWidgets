@@ -1,4 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <resources>
     <string id="AppName">Tide Face</string>
+    <string id="SlotTop">Top complication</string>
+    <string id="SlotRight">Right complication</string>
+    <string id="SlotLeft">Left complication</string>
+    <string id="SlotBottom">Bottom complication</string>
+    <string id="OptHeart">Heart rate</string>
+    <string id="OptSteps">Steps</string>
+    <string id="OptDate">Date</string>
+    <string id="OptWindMoutiers">Wind Moutiers</string>
+    <string id="OptWindBernerie">Wind Bernerie</string>
+    <string id="OptBattery">Battery</string>
+    <string id="OptNothing">Nothing</string>
 </resources>

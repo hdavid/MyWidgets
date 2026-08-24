@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- What each complication slot shows: 0 heart, 1 steps, 2 date,
+     3 Moutiers wind, 4 Bernerie wind, 5 battery, 6 nothing.
+     Defaults mirror the Venu default face plus wind at the bottom. -->
+<resources>
+    <properties>
+        <property id="slotTop" type="number">0</property>
+        <property id="slotRight" type="number">1</property>
+        <property id="slotLeft" type="number">2</property>
+        <property id="slotBottom" type="number">3</property>
+    </properties>
+</resources>
