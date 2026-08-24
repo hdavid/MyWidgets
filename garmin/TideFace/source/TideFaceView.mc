@@ -207,15 +207,23 @@ class TideFaceView extends WatchUi.WatchFace {
         }
     }
 
-    // Squared stroke digits 0-6 on an 8x14 grid — all the minute track needs.
+    // Rounded stroke digits 0-6 on an 8x14 grid — all the minute track needs.
+    // Curves are short polyline runs, so the same rotate-and-draw renderer
+    // handles them.
     const DIGIT_STROKES = [
-        [[[-3, -6], [3, -6], [3, 6], [-3, 6], [-3, -6]]],                    // 0
-        [[[-2, -4], [1, -6], [1, 6]]],                                       // 1
-        [[[-3, -6], [3, -6], [3, 0], [-3, 0], [-3, 6], [3, 6]]],             // 2
-        [[[-3, -6], [3, -6], [3, 6], [-3, 6]], [[0, 0], [3, 0]]],            // 3
-        [[[-3, -6], [-3, 0], [3, 0]], [[3, -6], [3, 6]]],                    // 4
-        [[[3, -6], [-3, -6], [-3, 0], [3, 0], [3, 6], [-3, 6]]],             // 5
-        [[[3, -6], [-3, -6], [-3, 6], [3, 6], [3, 0], [-3, 0]]]              // 6
+        [[[-3, -3], [-2, -5.2], [0, -6], [2, -5.2], [3, -3], [3, 3],
+          [2, 5.2], [0, 6], [-2, 5.2], [-3, 3], [-3, -3]]],                  // 0
+        [[[-2, -3.5], [0.5, -6], [0.5, 6]]],                                 // 1
+        [[[-3, -3.5], [-2, -5.4], [0, -6], [2, -5.4], [3, -3.5], [3, -2],
+          [-2.6, 4.2], [-3, 6], [3, 6]]],                                    // 2
+        [[[-3, -4.5], [-1.5, -6], [1, -6], [3, -4.4], [3, -1.8], [0.8, 0],
+          [3, 1.8], [3, 4.4], [1, 6], [-1.5, 6], [-3, 4.5]]],                // 3
+        [[[1.2, -6], [-3, 0.8], [3, 0.8]], [[1.2, -6], [1.2, 6]]],           // 4
+        [[[3, -6], [-2.6, -6], [-2.8, -0.6], [-1, -1.5], [1, -1.5],
+          [3, 0.2], [3, 3.2], [1.6, 5.4], [-1, 6], [-3, 4.6]]],              // 5
+        [[[2.4, -6], [-0.5, -5], [-2.4, -2], [-3, 1.2], [-2.6, 4],
+          [-1, 6], [1, 6], [3, 4.6], [3, 2], [1.4, 0.2], [-1, 0],
+          [-2.9, 1.8]]]                                                      // 6
     ];
 
     // Two-digit label centered on (x, y), rotated by `rot` radians. Scaled
@@ -370,7 +378,11 @@ class TideFaceView extends WatchUi.WatchFace {
         var minuteA = clock.min * Math.PI / 30.0;
         var hourA = (clock.hour % 12 + clock.min / 60.0) * Math.PI / 6.0;
         _hand(dc, cx, cy, hourA, 34, h * 28 / 100, 8, color);
-        _hand(dc, cx, cy, minuteA, 34, h * 46 / 100, 5, color);
+        // The minute hand is hollow on the original: a white outline around a
+        // dark core.
+        var mLen = h * 46 / 100;
+        _hand(dc, cx, cy, minuteA, 34, mLen, 7, color);
+        _bar(dc, cx, cy, minuteA, 34 + 3, mLen - 3, 3, Graphics.COLOR_BLACK);
         if (!_sleep) {
             var secondA = clock.sec * Math.PI / 30.0;
             var sLen = h * 45 / 100;
