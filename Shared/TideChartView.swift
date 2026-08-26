@@ -43,10 +43,14 @@ struct TideChart: View {
                 dayBand + labelTop + plotH * CGFloat(1 - (h - lo) / (hi - lo))
             }
 
-            // Day separators + per-day labels and coefficients.
+            // Day separators + per-day labels and coefficients. A week of
+            // slices leaves ~1/7 of the width per day, so labels shrink to
+            // the narrow weekday there.
+            let week = days > 4
             if days > 1 {
                 let cal = Calendar.current
-                let fmt = Date.FormatStyle().weekday(.abbreviated).day()
+                let fmt = week ? Date.FormatStyle().weekday(.narrow).day()
+                               : Date.FormatStyle().weekday(.abbreviated).day()
                 for d in 0..<days {
                     guard let dayStart = cal.date(byAdding: .day, value: d, to: start)
                     else { continue }
@@ -65,11 +69,19 @@ struct TideChart: View {
                     ctx.draw(ctx.resolve(label), at: CGPoint(x: xd + 3, y: topInset + 6),
                              anchor: .leading)
                     if !coefs.isEmpty {
-                        let c = Text(coefs.map(String.init).joined(separator: "·"))
+                        // A week's ~1/7 slice can't fit "96·97" next to the
+                        // day label without colliding — the day's max alone
+                        // tells the spring/neap story there.
+                        let text = week ? String(coefs.max() ?? 0)
+                                        : coefs.map(String.init).joined(separator: "·")
+                        let c = Text(text)
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundColor(coefs.contains { $0 >= 90 } ? Pal.orange : .primary)
-                        let dayW = size.width / CGFloat(days)
-                        ctx.draw(ctx.resolve(c), at: CGPoint(x: xd + dayW - 3, y: topInset + 6),
+                        // The last day can be partial (36 h span), so anchor to
+                        // where the day actually ends, not an equal-width slice.
+                        let dayEnd = cal.date(byAdding: .day, value: 1, to: dayStart)
+                            .map { min(x($0), size.width) } ?? size.width
+                        ctx.draw(ctx.resolve(c), at: CGPoint(x: dayEnd - 3, y: topInset + 6),
                                  anchor: .trailing)
                     }
                 }
@@ -111,7 +123,10 @@ struct TideChart: View {
                     .font(.system(size: 8, weight: .medium)).foregroundColor(Pal.green)
                 ctx.draw(ctx.resolve(tag), at: CGPoint(x: size.width - 2, y: ty - 6), anchor: .trailing)
 
-                if days == 1 {
+                // Crossing labels belong to the now-marker layouts (today
+                // widget, watch page) whatever their span; the days widget
+                // is too dense for them.
+                if nowMarker {
                     for c in crossings where c.threshold == threshold {
                         let cx = x(c.date)
                         guard cx > 14, cx < size.width - 20 else { continue }
@@ -127,20 +142,31 @@ struct TideChart: View {
             }
 
             // Extremes: time above the highs (with height when there's room),
-            // time below the lows.
+            // time below the lows. Dense charts drop the height; a full week
+            // drops the minutes too ("14h"), or neighbours overlap.
             let dense = days > 2
             for e in extremes {
                 let px = x(e.date)
                 guard px >= 0, px <= size.width else { continue }
                 let time = TideText.hm(e.date)
-                let label = dense ? time
+                let label = week ? "\(Calendar.current.component(.hour, from: e.date))h"
+                    : dense ? time
                     : "\(time) \(e.height.formatted(.number.precision(.fractionLength(1))))m"
                 let text = Text(label)
                     .font(.system(size: 8.5, weight: e.isHigh ? .semibold : .regular))
                     .foregroundColor(e.isHigh ? .primary : Pal.gray)
                 let py = e.isHigh ? y(e.height) - 8 : y(e.height) + 8
                 let ax = min(max(px, 22), size.width - 22)
-                _ = claim(CGPoint(x: ax, y: py), label, size: 8.5)
+                if week {
+                    // Edge clamping piles neighbours onto the same spot on a
+                    // week chart — skip a label rather than overlap the last.
+                    let w = CGFloat(label.count) * 8.5 * 0.62 + 4
+                    let r = CGRect(x: ax - w / 2, y: py - 6, width: w, height: 12)
+                    if placed.contains(where: { $0.intersects(r) }) { continue }
+                    placed.append(r)
+                } else {
+                    _ = claim(CGPoint(x: ax, y: py), label, size: 8.5)
+                }
                 ctx.draw(ctx.resolve(text), at: CGPoint(x: ax, y: py), anchor: .center)
             }
 

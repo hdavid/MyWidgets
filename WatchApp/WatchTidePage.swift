@@ -1,11 +1,15 @@
 import SwiftUI
 
-/// One tide location as a watch page, drawn exactly like the one-day tide
+/// One tide location as a watch page, drawn exactly like the default tide
 /// widget on iOS/macOS: title + coefficients header over the full-bleed
-/// day curve with threshold lines, crossing times, extremes and the
-/// now-marker. Synthesized locally (TideModel) — the only network ever is
-/// the one-time constituent fetch, so a tap just recomputes.
+/// 36 h curve (midnight to tomorrow noon, same span as the widget default)
+/// with threshold lines, crossing times, extremes and the now-marker.
+/// Synthesized locally (TideModel) — the only network ever is the one-time
+/// constituent fetch, so a tap just recomputes.
 struct WatchTidePage: View {
+    /// Chart window past midnight — keep in step with TideSpan's default.
+    private static let spanHours = 36
+
     var location: TideLocation
 
     @State private var day: DayData?
@@ -42,7 +46,7 @@ struct WatchTidePage: View {
                     }
                     TideChart(start: day.start, step: 600, curve: day.curve,
                               extremes: day.extremes, thresholds: location.thresholds,
-                              crossings: day.crossings, days: 1,
+                              crossings: day.crossings, days: (Self.spanHours + 23) / 24,
                               date: day.date, nowMarker: true)
                         .frame(maxHeight: .infinity)
                 }
@@ -65,8 +69,8 @@ struct WatchTidePage: View {
         }
         let now = Date()
         let start = Calendar.current.startOfDay(for: now)
-        let end = Calendar.current.date(byAdding: .day, value: 1, to: start)
-            ?? start.addingTimeInterval(86400)
+        let end = Calendar.current.date(byAdding: .hour, value: Self.spanHours, to: start)
+            ?? start.addingTimeInterval(Double(Self.spanHours) * 3600)
         let range = start...end
         day = DayData(
             date: now,

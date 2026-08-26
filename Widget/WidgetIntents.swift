@@ -192,10 +192,36 @@ struct TideLocationEntityQuery: EntityQuery {
     }
 }
 
+/// How far past midnight the today chart runs. 36 h is the default: tonight
+/// and tomorrow morning always visible, still legible on the small widget.
+enum TideSpan: String, AppEnum {
+    case h24, h36, h48
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation { "Chart span" }
+    static var caseDisplayRepresentations: [TideSpan: DisplayRepresentation] = [
+        .h24: "24 hours",
+        .h36: "36 hours",
+        .h48: "48 hours",
+    ]
+
+    var hours: Int {
+        switch self {
+        case .h24: return 24
+        case .h36: return 36
+        case .h48: return 48
+        }
+    }
+}
+
 struct SelectTideLocationIntent: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Tide location"
     static var description = IntentDescription("Choose which spot's tide this widget shows.")
 
     @Parameter(title: "Location")
     var location: TideLocationEntity?
+
+    /// Read by the today widget only — the days widget and the watch
+    /// complication have fixed spans.
+    @Parameter(title: "Span (today widget)", default: .h36)
+    var span: TideSpan
 }

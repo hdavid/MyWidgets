@@ -4,9 +4,10 @@ import WidgetKit
 
 // MARK: - Tide widgets
 //
-// Two kinds on the same engine: "TideToday" draws today's curve with the
-// now-marker (plus lock-screen accessory faces on iOS); "TideDays" the next
-// few days. Both show the coefficient, high/low times and the configured
+// Two kinds on the same engine: "TideToday" draws the curve from midnight over
+// a configurable 24/36/48 h span (36 h default — tonight and tomorrow morning
+// always in view) with the now-marker (plus lock-screen accessory faces on
+// iOS); "TideDays" the week ahead. Both show the coefficient, high/low times and the configured
 // threshold lines — the today chart also labels when each threshold is
 // crossed, both ways. Heights are synthesized locally from cached
 // constituents (TideModel) — the providers need the network at most once,
@@ -41,31 +42,43 @@ struct TideEntry: TimelineEntry {
     }
 }
 
-/// Both kinds share the maths; `days` decides the span. Everything after the
-/// one-time constituent fetch is local synthesis, so timelines are generated
-/// in bulk (a moving now-marker for today, a daily roll for the days view).
+/// Both kinds share the maths; the span in hours decides how far past
+/// midnight the curve runs. Everything after the one-time constituent fetch
+/// is local synthesis, so timelines are generated in bulk (a moving
+/// now-marker for today, a daily roll for the days view).
 struct TideProvider: AppIntentTimelineProvider {
-    let days: Int
+    /// Fixed span in hours (days widget); nil = the widget's own span setting.
+    let fixedHours: Int?
 
-    func placeholder(in context: Context) -> TideEntry { .placeholder(days: days) }
+    private func hours(for configuration: SelectTideLocationIntent) -> Int {
+        fixedHours ?? configuration.span.hours
+    }
+
+    func placeholder(in context: Context) -> TideEntry {
+        .placeholder(days: ((fixedHours ?? TideSpan.h36.hours) + 23) / 24)
+    }
 
     func snapshot(for configuration: SelectTideLocationIntent, in context: Context) async -> TideEntry {
-        await makeEntry(configuration.location?.id, at: Date())
+        await makeEntry(configuration.location?.id, at: Date(),
+                        hours: hours(for: configuration))
     }
 
     func timeline(for configuration: SelectTideLocationIntent, in context: Context) async -> Timeline<TideEntry> {
         // One shared fetch, then cheap per-instant entries: every 20 min for
         // the now-marker, refreshed after the last one.
         let now = Date()
+        let hours = hours(for: configuration)
         var entries: [TideEntry] = []
         for i in 0..<9 {
             entries.append(await makeEntry(configuration.location?.id,
-                                           at: now.addingTimeInterval(Double(i) * 1200)))
+                                           at: now.addingTimeInterval(Double(i) * 1200),
+                                           hours: hours))
         }
         return Timeline(entries: entries, policy: .atEnd)
     }
 
-    private func makeEntry(_ locationID: String?, at date: Date) async -> TideEntry {
+    private func makeEntry(_ locationID: String?, at date: Date, hours: Int) async -> TideEntry {
+        let days = (hours + 23) / 24
         guard let loc = TideConfig.location(locationID) else { return .placeholder(days: days) }
         let (local, brest) = await TideModel.harmonics(for: loc)
         guard let local, let mapping = loc.heightMapping else {
@@ -75,7 +88,8 @@ struct TideProvider: AppIntentTimelineProvider {
         }
         let cal = Calendar.current
         let start = cal.startOfDay(for: date)
-        let end = cal.date(byAdding: .day, value: days, to: start) ?? start.addingTimeInterval(86400)
+        let end = cal.date(byAdding: .hour, value: hours, to: start)
+            ?? start.addingTimeInterval(Double(hours) * 3600)
         let range = start...end
         return TideEntry(
             date: date,
@@ -196,11 +210,11 @@ private var tideTodayFamilies: [WidgetFamily] {
 struct TideTodayWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: "TideToday", intent: SelectTideLocationIntent.self,
-                               provider: TideProvider(days: 1)) { entry in
+                               provider: TideProvider(fixedHours: nil)) { entry in
             TideWidgetView(entry: entry, nowMarker: true)
         }
         .configurationDisplayName("Tide today")
-        .description("Today's tide curve, coefficient and thresholds.")
+        .description("The tide curve, coefficient and thresholds from midnight over 24, 36 or 48 hours — pick the span in Edit Widget.")
         .supportedFamilies(tideTodayFamilies)
         .contentMarginsDisabled()
     }
@@ -209,11 +223,11 @@ struct TideTodayWidget: Widget {
 struct TideDaysWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: "TideDays", intent: SelectTideLocationIntent.self,
-                               provider: TideProvider(days: 4)) { entry in
+                               provider: TideProvider(fixedHours: 7 * 24)) { entry in
             TideWidgetView(entry: entry, nowMarker: false)
         }
-        .configurationDisplayName("Tide days")
-        .description("The next days' tide curve, coefficients and thresholds.")
+        .configurationDisplayName("Tide week")
+        .description("The week ahead: tide curve, coefficients and thresholds.")
         .supportedFamilies([.systemMedium, .systemLarge])
         .contentMarginsDisabled()
     }
