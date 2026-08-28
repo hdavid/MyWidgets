@@ -14,6 +14,7 @@ struct WatchTidePage: View {
 
     @State private var day: DayData?
     @State private var missing = false
+    @State private var computing = false
 
     /// Same fields the widget's TideEntry carries for the chart.
     struct DayData {
@@ -59,9 +60,17 @@ struct WatchTidePage: View {
         .contentShape(Rectangle())
         .onTapGesture { Task { await compute() } }
         .task(id: location) { await compute() }
+        // Recomputing also re-anchors the window on the current midnight, so a
+        // page resumed the next morning stops showing yesterday's curve.
+        .refreshWhenStale(ttl: Freshness.tide, since: day?.date) { await compute() }
     }
 
+    @MainActor
     private func compute() async {
+        // harmonics() may go to the network the first time; don't stack calls.
+        guard !computing else { return }
+        computing = true
+        defer { computing = false }
         let (local, brest) = await TideModel.harmonics(for: location)
         guard let local, let mapping = location.heightMapping else {
             missing = true

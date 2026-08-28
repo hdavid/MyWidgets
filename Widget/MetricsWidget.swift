@@ -26,9 +26,10 @@ struct WindProvider: AppIntentTimelineProvider {
 
     func timeline(for configuration: SelectSourceIntent, in context: Context) async -> Timeline<WindEntry> {
         let entry = await makeEntry(configuration.source?.id)
-        // Ask for a refresh in 5 minutes; WidgetKit grants what its budget
+        // Ask for a refresh one TTL out; WidgetKit grants what its budget
         // allows (typically 5–15 min for a visible widget).
-        return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(5 * 60)))
+        return Timeline(entries: [entry],
+                        policy: .after(Date().addingTimeInterval(Freshness.wind)))
     }
 
     /// The widget fetches its own data — no companion app needs to run.

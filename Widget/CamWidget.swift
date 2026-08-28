@@ -95,7 +95,7 @@ struct CamProvider: AppIntentTimelineProvider {
 
     func timeline(for configuration: SelectCamIntent, in context: Context) async -> Timeline<CamEntry> {
         let entry = await CamFetch.entry(configuration.cam?.id)
-        let after = entry.spec?.refreshInterval ?? 300
+        let after = entry.spec?.refreshInterval ?? Freshness.camFallback
         return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(after)))
     }
 }

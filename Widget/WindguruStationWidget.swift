@@ -29,7 +29,8 @@ struct StationProvider: AppIntentTimelineProvider {
 
     func timeline(for configuration: SelectStationIntent, in context: Context) async -> Timeline<StationEntry> {
         let entry = await makeEntry(configuration.station?.id)
-        return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(5 * 60)))
+        return Timeline(entries: [entry],
+                        policy: .after(Date().addingTimeInterval(Freshness.wind)))
     }
 
     private func storeKey(_ station: WindguruStation) -> String { "wgstation_\(station.id)" }

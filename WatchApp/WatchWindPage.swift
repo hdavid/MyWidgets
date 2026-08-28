@@ -2,8 +2,9 @@ import SwiftUI
 
 /// The main screen: one Grafana source, laid out like the small widget —
 /// rose + big value, secondary line, chips — sized for a watch. Fetches on
-/// appearance and again on tap; between fetches the last good snapshot from
-/// this process's cache keeps something on screen.
+/// appearance, on tap, and whenever what is on screen has aged past
+/// Freshness.wind; between fetches the last good snapshot from this process's
+/// cache keeps something on screen.
 struct WatchWindPage: View {
     var source: GrafanaSource
 
@@ -58,8 +59,10 @@ struct WatchWindPage: View {
         .contentShape(Rectangle())
         .onTapGesture { Task { await load() } }
         .task(id: source) { await load() }
+        .refreshWhenStale(ttl: Freshness.wind, since: snap?.fetchedAt) { await load() }
     }
 
+    @MainActor
     private func load() async {
         guard !loading else { return }
         loading = true

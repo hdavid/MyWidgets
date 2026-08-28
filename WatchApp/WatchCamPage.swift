@@ -2,12 +2,17 @@ import SwiftUI
 import ImageIO
 
 /// One webcam, full-bleed, with the same name + capture-time caption the
-/// widget draws. Tap to refetch.
+/// widget draws. Tap to refetch; it also refetches by itself once the frame on
+/// screen is older than the cam's own interval.
 struct WatchCamPage: View {
     var cam: CamSpec
 
     @State private var image: CGImage?
     @State private var capturedAt: Date?
+    /// When we last got a frame, as opposed to when the camera took it — a cam
+    /// can legitimately serve an old picture, and only our own fetch time says
+    /// whether it is worth asking again.
+    @State private var fetchedAt: Date?
     @State private var stale = false
     @State private var loading = false
 
@@ -46,8 +51,10 @@ struct WatchCamPage: View {
         .contentShape(Rectangle())
         .onTapGesture { Task { await load() } }
         .task(id: cam) { await load() }
+        .refreshWhenStale(ttl: cam.refreshInterval, since: fetchedAt) { await load() }
     }
 
+    @MainActor
     private func load() async {
         guard !loading, let url = cam.image else { return }
         loading = true
@@ -65,6 +72,7 @@ struct WatchCamPage: View {
         }
         image = img
         stale = false
+        fetchedAt = Date()
         capturedAt = lastModified(resp) ?? Date()
     }
 

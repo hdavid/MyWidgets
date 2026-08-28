@@ -49,8 +49,12 @@ struct WatchForecastPage: View {
         .contentShape(Rectangle())
         .onTapGesture { Task { await load() } }
         .task(id: spot) { await load() }
+        .refreshWhenStale(ttl: Freshness.forecast, since: forecast?.fetchedAt) {
+            await load()
+        }
     }
 
+    @MainActor
     private func load() async {
         guard !loading else { return }
         loading = true

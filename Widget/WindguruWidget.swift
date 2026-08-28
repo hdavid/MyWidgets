@@ -30,7 +30,8 @@ struct ForecastProvider: AppIntentTimelineProvider {
         let entry = await makeEntry(configuration.spot?.id)
         // Models refresh a few times a day; an hourly reload keeps the strip
         // anchored to the current time cheaply.
-        return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(60 * 60)))
+        return Timeline(entries: [entry],
+                        policy: .after(Date().addingTimeInterval(Freshness.forecast)))
     }
 
     private func makeEntry(_ spotID: String?) async -> ForecastEntry {
