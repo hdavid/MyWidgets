@@ -53,6 +53,15 @@ jobs:
 
       - name: Build, sign, notarize & package
         env:
+          # The bundle prefix is NOT a secret, but it must be set explicitly:
+          # configure.sh reads local-config/build.env first, and that file is
+          # gitignored, so on a runner it silently fell through to the
+          # build.env.example placeholder and shipped com.example.MyWidgets —
+          # a different app identity from the local install, with a matching
+          # mismatch in the App Group. Keep this in step with
+          # local-config/build.env.
+          BUNDLE_PREFIX: com.motscousus
+          APP_NAME: MyWidgets
           DEVELOPER_ID_APP: ${{ secrets.DEVELOPER_ID_APP }}
           DEVELOPMENT_TEAM: ${{ secrets.NOTARY_TEAM_ID }}
           NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}

@@ -33,7 +33,17 @@ gh repo view "$REPO" >/dev/null 2>&1 || {
 
 # Parse line-by-line rather than sourcing: DEVELOPER_ID_APP holds spaces and
 # parens ("… (TEAMID)"), which `source` would glob and word-split.
-envval() { grep "^$1=" "$ENV_FILE" | head -1 | cut -d= -f2-; }
+#
+# The values may nonetheless be quoted, because the *other* documented way to
+# use this file (README: `set -a; . ./.env.local; set +a` before a signed local
+# build) is shell sourcing, and there the parens are a syntax error unless the
+# value is quoted. One layer of surrounding quotes is stripped here so GitHub
+# receives the bare identity — a literal `"…"` in the secret makes codesign
+# fail in CI with "no identity found".
+envval() {
+    grep "^$1=" "$ENV_FILE" | head -1 | cut -d= -f2- \
+        | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+}
 DEVELOPER_ID_APP="$(envval DEVELOPER_ID_APP)"
 NOTARY_APPLE_ID="$(envval NOTARY_APPLE_ID)"
 NOTARY_TEAM_ID="$(envval NOTARY_TEAM_ID)"
